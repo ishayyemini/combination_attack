@@ -51,26 +51,22 @@ print(queries[heldin_concept_qids[0]])
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = SentenceTransformer(embedder_model_name).to(device)
 
-batch_size = 1024  # Adjust based on your GPU memory
-encoded_data = []
+batch_size = 512  # Adjust based on your GPU memory
 
-for i in trange(0, len(corpus), batch_size):
-    batch_texts = []
-    batch_ids = []
-
-    for j in range(i, min(i + batch_size, len(corpus))):
-        c = corpus[f"{j}"]
-        batch_texts.append(c["text"])
-        batch_ids.append(f"{j}")
-
-    # Encode batch at once
-    batch_encodings = model.encode(batch_texts, convert_to_tensor=True)
-
-    # Prepare batch data
-    for doc_id, encoding in zip(batch_ids, batch_encodings):
-        encoded_data.append({"_id": doc_id, "enc": encoding.tolist()})
-
-# Write all at once
 with open("data/corpus_enc.jsonl", "w") as out:
-    for item in encoded_data:
-        print(json.dumps(item), file=out)
+    for i in trange(0, len(corpus), batch_size):
+        batch_texts = []
+        batch_ids = []
+
+        for j in range(i, min(i + batch_size, len(corpus))):
+            c = corpus[f"{j}"]
+            batch_texts.append(c["text"])
+            batch_ids.append(f"{j}")
+
+        # Encode batch at once
+        batch_encodings = model.encode(batch_texts, convert_to_tensor=True)
+
+        # Write batch immediately to file
+        for doc_id, encoding in zip(batch_ids, batch_encodings):
+            item = {"_id": doc_id, "enc": encoding.tolist()}
+            print(json.dumps(item), file=out)
