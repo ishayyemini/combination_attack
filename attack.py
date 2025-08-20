@@ -1,7 +1,8 @@
 from sentence_transformers import SentenceTransformer
 import torch
 import numpy as np
-from tqdm import tqdm
+from tqdm import trange
+from sentence_transformers import util
 
 
 class BlackBoxAttack:
@@ -13,7 +14,7 @@ class BlackBoxAttack:
         num_tokens=20,
         num_pool=500,
         device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
-        cos_sim=torch.nn.CosineSimilarity(dim=0, eps=1e-6),
+        batch_size=128,
     ):
         # The embedding model
         self.model = model
@@ -29,37 +30,66 @@ class BlackBoxAttack:
         self.num_pool = num_pool
         # Compute the embedding of each token and store the result in a matrix E
         self.tokenizer = model.tokenizer
-        self.cos_sim = cos_sim.to(device)
         self.device = device
+        self.batch_size = batch_size  # added
 
     def attack(self, p_adv: str):
         curr_p = p_adv
         tokens = []
 
         p_adv_emb = self.model.encode(p_adv, convert_to_tensor=True).to(self.device)
-        print(f"initial similarity: {self.cos_sim(self.q_emb, p_adv_emb)}")
+        base_sim = util.cos_sim(self.q_emb, p_adv_emb).item()
+        print(f"initial similarity: {base_sim}")
 
-        curr_best = 0
+        iter_best_score = 0
+
         for n in range(self.num_tokens):
             print(f"iteration {n + 1}")
-            best_token = None
             pool = np.random.choice(30521, size=(self.num_pool,))
-            for i in tqdm(pool):
-                token = self.model.tokenizer.decode(i)
-                check_p = curr_p + " " + token
-                check_emb = self.model.encode(check_p, convert_to_tensor=True)
-                sim = self.cos_sim(self.q_emb, check_emb)
-                if sim > curr_best:
-                    best_token = token
-                    curr_best = sim
+
+            # compute current baseline similarity for this iteration
+            p_adv_emb = self.model.encode(curr_p, convert_to_tensor=True).to(
+                self.device
+            )
+            iter_best_score = util.cos_sim(self.q_emb, p_adv_emb).item()
+            best_token = None
+
+            # evaluate candidates in parallel by batching
+            for i in trange(0, len(pool), self.batch_size):
+                batch_ids = [
+                    pool[i] for i in range(i, min(i + self.batch_size, len(pool)))
+                ]
+                batch_tokens = [self.model.tokenizer.decode(i) for i in batch_ids]
+
+                # build candidate prompts
+                check_ps = [curr_p + " " + t for t in batch_tokens]
+
+                # encode all candidates as a single batch
+                embs = self.model.encode(
+                    check_ps,
+                    convert_to_tensor=True,
+                    batch_size=self.batch_size,
+                    show_progress_bar=False,
+                ).to(self.device)
+
+                # vectorized cosine similarity against q_emb
+                scores = util.cos_sim(self.q_emb, embs).squeeze(0)  # shape: [batch]
+                max_score, max_idx = torch.max(scores, dim=0)
+                ms = max_score.item()
+                if ms > iter_best_score:
+                    iter_best_score = ms
+                    best_token = batch_tokens[max_idx.item()]
+
             if best_token is not None:
                 tokens.append(best_token)
                 curr_p += " " + best_token
-                print(f"best token: {best_token}, current similarity: {curr_best}")
-                print()
+                print(
+                    f"best token: {best_token}, current similarity: {iter_best_score}\n"
+                )
+            else:
+                print("no improving token found\n")
 
-        print(f"similarity with tokens: {curr_best}")
-
+        print(f"final similarity: {iter_best_score}")
         return tokens
 
     # def add_to_corpus(self, c: str):
