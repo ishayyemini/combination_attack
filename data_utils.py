@@ -59,6 +59,15 @@ def load_dataset(
         }[dataset_name]
         if "nq" in dataset_name:
             dataset_name = "nq"
+    elif data_split == "dev":
+        data_split = {
+            "scifact": "dev",
+            "msmarco": "dev",
+            "fiqa": "dev",
+            "nq": "dev",
+        }[dataset_name]
+        if "nq" in dataset_name:
+            dataset_name = "nq-dev"
     else:  # "train"
         data_split = {
             "scifact": "train",
