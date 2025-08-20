@@ -1,3 +1,4 @@
+import re
 from sentence_transformers import SentenceTransformer
 import torch
 import numpy as np
@@ -42,10 +43,11 @@ class BlackBoxAttack:
         print(f"initial similarity: {base_sim}")
 
         iter_best_score = 0
+        valid_vocab_ids = self._get_valid_vocab_ids()
 
         for n in range(self.num_tokens):
             print(f"iteration {n + 1}")
-            pool = np.random.choice(30521, size=(self.num_pool,))
+            pool = np.random.choice(valid_vocab_ids, size=(self.num_pool,))
 
             # compute current baseline similarity for this iteration
             p_adv_emb = self.model.encode(curr_p, convert_to_tensor=True).to(
@@ -91,6 +93,21 @@ class BlackBoxAttack:
 
         print(f"final similarity: {iter_best_score}")
         return tokens
+
+    def _get_valid_vocab_ids(self):
+        if hasattr(self, "_valid_vocab_ids"):
+            return self._valid_vocab_ids
+
+        vocab = self.tokenizer.get_vocab()
+        valid_ids = []
+        english_pattern = re.compile(r"^[a-zA-Z]+$")
+
+        for token, token_id in vocab.items():
+            if english_pattern.match(token):
+                valid_ids.append(token_id)
+
+        self._valid_vocab_ids = np.array(valid_ids)
+        return self._valid_vocab_ids
 
     # def add_to_corpus(self, c: str):
     #     corpus = self.corpus.tolist()
