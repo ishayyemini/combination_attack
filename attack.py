@@ -51,6 +51,7 @@ class BlackBoxAttack:
                     print(token)
             if best_token is not None:
                 tokens.append(best_token)
+                curr_p += " " + best_token
 
         print(f"similarity with tokens: {curr_best}")
 
