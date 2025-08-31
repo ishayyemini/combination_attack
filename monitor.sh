@@ -13,5 +13,5 @@ while true; do
     echo "-------------------------------------"
     squeue --me
     echo "-------------------------------------"
-    sleep 1 # Wait for 1 second before the next check
+    sleep 3 # Wait for 1 second before the next check
 done

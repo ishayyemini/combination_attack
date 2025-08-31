@@ -10,4 +10,4 @@
 #SBATCH --gpus=1
 #SBATCH --partition=gpu-sharifm
 
-python big_corpus_test.py
+python attack_like_gaslight.py
