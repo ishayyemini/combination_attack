@@ -1,0 +1,31 @@
+Loading dataset msmarco (dev) portion=1.0
+Loaded corpus=8841823 queries=6980
+Loading embedder: intfloat/e5-base-v2 on cuda
+Downloading retrieval results file: msmarco-test_1.0_e5-base-v2_cos_sim.json
+[Trial 1/10] max_tokens=22 beam=7 pool=258 sample=117 temp=0.60 -> query_sim=0.8967 tokens=22.0 time=14.75s
+[Trial 2/10] max_tokens=46 beam=11 pool=218 sample=109 temp=1.10 -> query_sim=0.9136 tokens=46.0 time=55.05s
+[Trial 3/10] max_tokens=37 beam=9 pool=204 sample=52 temp=0.56 -> query_sim=0.9090 tokens=37.0 time=19.25s
+[Trial 4/10] max_tokens=24 beam=9 pool=90 sample=95 temp=0.91 -> query_sim=0.8970 tokens=24.0 time=16.19s
+[Trial 5/10] max_tokens=42 beam=4 pool=190 sample=90 temp=0.82 -> query_sim=0.9086 tokens=42.0 time=15.36s
+[Trial 6/10] max_tokens=55 beam=8 pool=113 sample=91 temp=1.00 -> query_sim=0.9153 tokens=55.0 time=46.77s
+[Trial 7/10] max_tokens=24 beam=8 pool=185 sample=34 temp=0.73 -> query_sim=0.8869 tokens=21.0 time=7.84s
+[Trial 8/10] max_tokens=51 beam=7 pool=173 sample=101 temp=1.12 -> query_sim=0.9123 tokens=51.0 time=38.39s
+[Trial 9/10] max_tokens=35 beam=11 pool=221 sample=40 temp=0.67 -> query_sim=0.8964 tokens=35.0 time=17.22s
+[Trial 10/10] max_tokens=37 beam=3 pool=265 sample=85 temp=0.84 -> query_sim=0.9032 tokens=37.0 time=9.28s
+Best config (by avg_query_sim):
+{
+  "trial": 6.0,
+  "seed": 48.0,
+  "max_tokens": 55.0,
+  "beam_size": 8.0,
+  "pool_size": 113.0,
+  "sample_per_beam": 91.0,
+  "temperature": 0.9981,
+  "avg_query_sim": 0.9152981042861938,
+  "avg_combined_score": 0.9096001386642456,
+  "avg_tokens_generated": 55.0,
+  "avg_decoding_time_sec": 46.7674765586853,
+  "trial_wall_time_sec": 46.81263875961304,
+  "query_samples": 1.0
+}
+Search complete. Outputs stored in adv_dec_hparam_10_1
