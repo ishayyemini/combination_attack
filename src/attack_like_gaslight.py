@@ -47,7 +47,11 @@ with open(local_results_path) as f:
 print("Results loaded successfully.")
 
 
-chosen_queries = np.random.choice(list(queries.keys()), size=(50,), replace=False)
+test_size = 50
+
+chosen_queries = np.random.choice(
+    list(queries.keys()), size=(test_size,), replace=False
+)
 
 orig_rankings = []
 stuffing_rankings = []
@@ -105,12 +109,19 @@ for i, qid in enumerate(chosen_queries):
     print()
     print(f"Attack number {i + 1}")
     tokens = bb_attack.attack(p_adv)
-    p_attacked = p_adv + " " + " ".join(tokens)
+    s_tokens, current_prompt, history = bb_attack.square_attack(
+        p_adv,
+        total_tokens=60,
+        num_iters=1500,
+        random_pool_per_pos=200,
+        early_stop_patience=100,
+        initial_tokens=tokens,
+    )
+
+    p_attacked = p_adv + " " + " ".join(s_tokens)
     print(f"Adversarial passage: {p_attacked}")
 
-    p_attacked_enc = model.encode(
-        p_adv + " " + " ".join(tokens), convert_to_tensor=True
-    )
+    p_attacked_enc = model.encode(p_attacked, convert_to_tensor=True)
     attacked_sim = cos_sim(q_enc, p_attacked_enc)
     print(f"Similarity between query and attacked passage: {attacked_sim}")
     attacked_similarities.append(attacked_sim.item())
@@ -120,7 +131,7 @@ for i, qid in enumerate(chosen_queries):
         if score > attacked_sim:
             attacked_ranking += 1
     attacked_rankings.append(attacked_ranking)
-    print("\n\n")
+    print("\n\n", flush=True)
 
 print(f"Rankings of original passages: {orig_rankings}")
 print(f"Rankings of stuffing passages: {stuffing_rankings}")

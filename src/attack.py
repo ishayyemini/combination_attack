@@ -103,6 +103,7 @@ class BlackBoxAttack:
         random_pool_per_pos: int = 50,
         early_stop_patience: int = 100,
         seed: int | None = None,
+        initial_tokens: list[str] | None = None,
     ):
         """A 1D adaptation of the image Square Attack for token sequence (prompt) optimization.
 
@@ -118,6 +119,7 @@ class BlackBoxAttack:
             random_pool_per_pos: For every position in the chosen block we sample uniformly that many candidate tokens and pick 1 (simple random draw). Higher => more diversity.
             early_stop_patience: Stop if no improvement for this many iterations.
             seed: Optional RNG seed for reproducibility.
+            initial_tokens: Optional list of tokens to initialize the appended tokens (if shorter than total_tokens, repeated as needed).
 
         Returns:
             appended_tokens: Final list of appended tokens (length = total_tokens).
@@ -134,12 +136,18 @@ class BlackBoxAttack:
 
         # Initialize appended tokens randomly.
         appended_tokens = []
-        for _ in range(total_tokens):
-            tok_id = np.random.choice(valid_vocab_ids)
-            tok = self.tokenizer.decode(int(tok_id))
-            if not tok.strip():  # ensure non-empty
-                tok = "the"  # fallback harmless common token
-            appended_tokens.append(tok)
+        if initial_tokens:
+            appended_tokens = list(initial_tokens)
+
+        for i in range(len(appended_tokens), total_tokens):
+            if initial_tokens and len(initial_tokens) != 0:
+                appended_tokens.append(initial_tokens[i % len(initial_tokens)])
+            else:
+                tok_id = np.random.choice(valid_vocab_ids)
+                tok = self.tokenizer.decode(int(tok_id))
+                if not tok.strip():  # ensure non-empty
+                    tok = "the"  # fallback harmless common token
+                appended_tokens.append(tok)
 
         def build_prompt(tokens_list):
             if tokens_list:

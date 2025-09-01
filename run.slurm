@@ -9,4 +9,4 @@
 #SBATCH -t 24:00:00  # time requested in hour:minute:second
 #SBATCH --gpus=1
 
-python attack_like_gaslight.py
+python src/attack_like_gaslight.py
