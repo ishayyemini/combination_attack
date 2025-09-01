@@ -4,7 +4,7 @@ import os
 import random
 import time
 from pathlib import Path
-from tqdm import trange
+from tqdm import trange, tqdm
 
 import numpy as np
 import torch
@@ -123,6 +123,9 @@ def main():
     all_query_ids = list(queries.keys())
     if len(all_query_ids) == 0:
         raise RuntimeError("No queries loaded")
+    trial_query_ids = random.sample(
+        all_query_ids, k=min(args.query_samples, len(all_query_ids))
+    )
 
     trial_records = []
 
@@ -139,14 +142,10 @@ def main():
         sample_per_beam = sample_int(args.sample_min, args.sample_max)
         temperature = random.uniform(args.temp_min, args.temp_max)
 
-        trial_query_ids = random.sample(
-            all_query_ids, k=min(args.query_samples, len(all_query_ids))
-        )
-
         per_query_metrics = []
         t0_trial = time.time()
 
-        for qid in trial_query_ids:
+        for qid in tqdm(trial_query_ids):
             q_text = queries[qid]
             # Build reference texts: either top retrieved or random fallback
             if retr_results and qid in retr_results:
