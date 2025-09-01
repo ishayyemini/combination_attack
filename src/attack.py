@@ -213,6 +213,195 @@ class BlackBoxAttack:
 
         return best_tokens, current_prompt, history
 
+    def adversarial_decoding_rag(
+        self,
+        base_prompt: str,
+        reference_texts: list[str],
+        max_tokens: int = 32,
+        beam_size: int = 5,
+        pool_size: int = 120,
+        seed: int | None = None,
+        use_query_similarity: bool = True,
+        sample_per_beam: int = 40,
+        temperature: float = 1.0,
+        verbose: bool = False,
+    ):
+        """Adversarial Decoding (RAG-oriented) to craft appended tokens that maximize
+        semantic similarity to a target (query embedding and/or reference corpus embeddings).
+
+        This is a lightweight, self-contained adaptation of the retrieval-focused
+        adversarial decoding logic: we run a constrained beam search over appended
+        tokens. At each expansion step we sample a candidate token pool (per beam),
+        score all expansions via cosine similarity vs either:
+          - the stored query embedding (self.q_emb) if use_query_similarity=True
+          - the mean of reference_texts embeddings (always included)
+        and keep the top `beam_size` sequences.
+
+        Args:
+            base_prompt: Fixed starting prompt (not altered).
+            reference_texts: Texts whose embedding(s) guide optimization.
+            max_tokens: Max number of appended tokens.
+            beam_size: Beam width.
+            pool_size: Size of global random vocab pool drawn once per step (upper bound for diversity).
+            seed: RNG seed.
+            use_query_similarity: Include similarity to original query embedding.
+            sample_per_beam: For every beam we draw this many token candidates from the (possibly temperature-weighted) pool.
+            temperature: Softmax temperature over frequency-derived scores (currently uniform if no freq stats available; kept for extensibility).
+            verbose: Print progress if True.
+
+        Returns:
+            best_tokens: List[str] best appended tokens.
+            final_prompt: The concatenated full prompt.
+            history: List of dicts with iteration stats.
+        """
+        if seed is not None:
+            np.random.seed(seed)
+            torch.manual_seed(seed)
+
+        if not reference_texts:
+            raise ValueError("reference_texts must be non-empty")
+
+        # Encode reference texts once (batched)
+        ref_embs = self.model.encode(
+            reference_texts,
+            convert_to_tensor=True,
+            batch_size=self.batch_size,
+            show_progress_bar=False,
+            normalize_embeddings=True,
+        ).to(self.device)
+        mean_ref = ref_embs.mean(dim=0, keepdim=True)  # [1, d]
+
+        # Precompute base embedding (without any appended tokens)
+        base_emb = self.model.encode(
+            base_prompt,
+            convert_to_tensor=True,
+            show_progress_bar=False,
+            normalize_embeddings=True,
+        ).to(self.device)
+
+        valid_vocab_ids = self._get_valid_vocab_ids()
+        if len(valid_vocab_ids) == 0:
+            raise RuntimeError("No valid vocab ids found.")
+
+        # Beam entries: (tokens_list, score, embedding_cache_string)
+        # We store only the appended tokens; full prompt constructed on demand.
+        # Initial score is similarity of base prompt.
+        def score_full_prompt(tokens_list: list[str]):
+            full_text = (
+                base_prompt
+                if not tokens_list
+                else base_prompt + " " + " ".join(tokens_list)
+            )
+            emb = self.model.encode(
+                full_text,
+                convert_to_tensor=True,
+                show_progress_bar=False,
+                normalize_embeddings=True,
+            ).to(self.device)
+            # Score parts
+            scores = []
+            # Always include mean reference similarity
+            scores.append(util.cos_sim(emb, mean_ref).item())
+            if use_query_similarity:
+                scores.append(util.cos_sim(emb, self.q_emb).item())
+            return sum(scores) / len(scores), emb
+
+        base_score, _ = score_full_prompt([])
+        beams = [([], base_score)]
+        best_overall = ([], base_score)
+        history = [{"step": 0, "best_score": base_score, "beam_scores": [base_score]}]
+
+        for step in range(1, max_tokens + 1):
+            # Sample a global pool of candidate vocab ids (without replacement if possible)
+            if pool_size >= len(valid_vocab_ids):
+                global_pool = valid_vocab_ids
+            else:
+                global_pool = np.random.choice(
+                    valid_vocab_ids, size=pool_size, replace=False
+                )
+
+            # Token probabilities (currently uniform). Temperature kept for future frequency weighting.
+            probs = np.ones(len(global_pool), dtype=np.float64)
+            probs /= probs.sum()
+            if temperature != 1.0:
+                # Softmax with temperature (still uniform here)
+                probs = np.exp(np.log(probs + 1e-12) / temperature)
+                probs /= probs.sum()
+
+            candidate_expansions = []  # list of (tokens_list, score)
+            # Expand each beam
+            for tokens_list, _score in beams:
+                # Per-beam sample
+                sample_ids = np.random.choice(
+                    global_pool,
+                    size=min(sample_per_beam, len(global_pool)),
+                    replace=False,
+                    p=probs,
+                )
+                decoded = [self.tokenizer.decode(int(i)) for i in sample_ids]
+                # Build prompts in batch
+                batch_prompts = []
+                new_token_lists = []
+                for tok in decoded:
+                    if not tok.strip():
+                        continue
+                    new_tokens = tokens_list + [tok]
+                    full_text = base_prompt + " " + " ".join(new_tokens)
+                    batch_prompts.append(full_text)
+                    new_token_lists.append(new_tokens)
+                if not batch_prompts:
+                    continue
+                embs = self.model.encode(
+                    batch_prompts,
+                    convert_to_tensor=True,
+                    batch_size=self.batch_size,
+                    show_progress_bar=False,
+                    normalize_embeddings=True,
+                ).to(self.device)
+                # Compute similarity metrics
+                ref_sims = util.cos_sim(embs, mean_ref.repeat(embs.size(0), 1)).squeeze(
+                    1
+                )
+                if use_query_similarity:
+                    q_sims = util.cos_sim(
+                        embs, self.q_emb.repeat(embs.size(0), 1)
+                    ).squeeze(1)
+                    combined = (ref_sims + q_sims) / 2.0
+                else:
+                    combined = ref_sims
+                for new_tokens, sc in zip(new_token_lists, combined.tolist()):
+                    candidate_expansions.append((new_tokens, sc))
+
+            if not candidate_expansions:
+                # Cannot expand further
+                break
+
+            # Select top beams
+            candidate_expansions.sort(key=lambda x: x[1], reverse=True)
+            beams = candidate_expansions[:beam_size]
+
+            # Update best
+            if beams[0][1] > best_overall[1]:
+                best_overall = beams[0]
+
+            history.append(
+                {
+                    "step": step,
+                    "best_score": best_overall[1],
+                    "beam_scores": [b for (_, b) in beams],
+                }
+            )
+            if verbose:
+                print(
+                    f"[RAG-ADV] step={step} best={best_overall[1]:.4f} top_beam={beams[0][1]:.4f}"
+                )
+
+        best_tokens, best_score = best_overall
+        final_prompt = base_prompt + (
+            " " + " ".join(best_tokens) if best_tokens else ""
+        )
+        return best_tokens, final_prompt, history
+
     def _p_selection(self, p_init: float, it: int, n_iters: int) -> float:
         """Piece-wise constant schedule for p (re-used from original Square Attack)."""
         scaled = int(it / n_iters * 10000)
