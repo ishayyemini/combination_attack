@@ -5,6 +5,7 @@ from huggingface_hub import hf_hub_download
 import json
 import numpy as np
 from datasets import load_dataset
+from tqdm import tqdm
 
 from attack import BlackBoxAttack
 
@@ -71,7 +72,7 @@ orig_similarities = []
 stuffing_similarities = []
 attacked_similarities = []
 
-for i, qid in enumerate(chosen_queries):
+for i, qid in enumerate(tqdm(chosen_queries)):
     q = queries[qid]
     p = corpus[list(results[qid].keys())[0]]["text"]
     p_adv = "passage: " + np.random.choice(toxic_prefixes).strip()
