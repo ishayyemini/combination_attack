@@ -358,14 +358,10 @@ class BlackBoxAttack:
                     show_progress_bar=False,
                     normalize_embeddings=True,
                 ).to(self.device)
-                # Compute similarity metrics
-                ref_sims = util.cos_sim(embs, mean_ref.repeat(embs.size(0), 1)).squeeze(
-                    1
-                )
+                # Compute similarity metrics (correctly as vectors)
+                ref_sims = util.cos_sim(embs, mean_ref).squeeze(1)  # shape [batch]
                 if use_query_similarity:
-                    q_sims = util.cos_sim(
-                        embs, self.q_emb.repeat(embs.size(0), 1)
-                    ).squeeze(1)
+                    q_sims = util.cos_sim(embs, self.q_emb).squeeze(1)  # shape [batch]
                     combined = (ref_sims + q_sims) / 2.0
                 else:
                     combined = ref_sims
