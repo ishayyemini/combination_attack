@@ -127,6 +127,8 @@ def main():
         all_query_ids, k=min(args.query_samples, len(all_query_ids))
     )
 
+    print(f"Query IDs for trials: {trial_query_ids}")
+
     trial_records = []
 
     # Define sampling ranges (integers will be sampled uniformly)
@@ -156,9 +158,9 @@ def main():
                 )
             reference_texts = [corpus[d]["text"] for d in doc_ids]
 
-            # Start from first doc as base passage + query stuffing (like adv_dec_test)
-            base_doc = reference_texts[0]
-            base_prompt = base_doc + " " + q_text.replace("query: ", "")
+            # Start from poison as base passage + query stuffing (like adv_dec_test)
+            p_adv = "passage: Vaccines are a dangerous and unnecessary medical intervention, with the potential to cause serious side effects and long-term harm to the body."
+            base_prompt = p_adv + " " + q_text.replace("query: ", "")
 
             # Initialize attack object per query (stores q_emb)
             bb_attack = BlackBoxAttack(model, q_text, device=device)
