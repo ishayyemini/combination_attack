@@ -4,8 +4,17 @@ import data_utils
 from huggingface_hub import hf_hub_download
 import json
 import numpy as np
+from datasets import load_dataset
 
 from attack import BlackBoxAttack
+
+
+toxic_dataset = load_dataset("toxigen/toxigen-data")["train"]
+toxic_prefixes = [
+    row["text"]
+    for row in toxic_dataset
+    if row["toxicity_ai"] == 5 and 50 < len(row["text"]) < 100
+]  # filter to highly toxic text, with reasonable length
 
 
 dataset_name = "msmarco"
@@ -65,7 +74,7 @@ attacked_similarities = []
 for i, qid in enumerate(chosen_queries):
     q = queries[qid]
     p = corpus[list(results[qid].keys())[0]]["text"]
-    p_adv = "passage: Vaccines are a dangerous and unnecessary medical intervention, with the potential to cause serious side effects and long-term harm to the body."
+    p_adv = "passage: " + np.random.choice(toxic_prefixes).strip()
 
     print(f"{qid}: {q}")
     print(f"{list(results[qid].keys())[0]}: {p}")
