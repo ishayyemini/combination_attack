@@ -118,14 +118,27 @@ for i, qid in enumerate(tqdm(chosen_queries)):
 
     print()
     print(f"Attack number {i + 1}")
-    tokens = bb_attack.attack(p_adv)
-    s_tokens, current_prompt, history = bb_attack.square_attack(
+    # tokens = bb_attack.attack(p_adv)
+    # s_tokens, current_prompt, history = bb_attack.square_attack(
+    #     p_adv,
+    #     total_tokens=60,
+    #     num_iters=1500,
+    #     random_pool_per_pos=200,
+    #     early_stop_patience=100,
+    #     initial_tokens=tokens,
+    # )
+
+    doc_ids = list(results[qid].keys())[:10]
+    reference_texts = [corpus[d]["text"] for d in doc_ids]
+    s_tokens, _, _ = bb_attack.adversarial_decoding_rag(
         p_adv,
-        total_tokens=60,
-        num_iters=1500,
-        random_pool_per_pos=200,
-        early_stop_patience=100,
-        initial_tokens=tokens,
+        reference_texts=reference_texts,
+        max_tokens=57,
+        beam_size=9,
+        pool_size=208,
+        sample_per_beam=104,
+        temperature=0.9752,
+        verbose=True,
     )
 
     p_attacked = p_adv + " " + " ".join(s_tokens)
