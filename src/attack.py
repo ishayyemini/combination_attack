@@ -2,7 +2,6 @@ import re
 from sentence_transformers import SentenceTransformer
 import torch
 import numpy as np
-from tqdm import trange
 from sentence_transformers import util
 
 
@@ -52,7 +51,7 @@ class BlackBoxAttack:
             best_token = None
 
             # evaluate candidates in parallel by batching
-            for i in trange(0, len(pool), self.batch_size):
+            for i in range(0, len(pool), self.batch_size):
                 batch_ids = [
                     pool[i] for i in range(i, min(i + self.batch_size, len(pool)))
                 ]
@@ -169,33 +168,41 @@ class BlackBoxAttack:
             start = np.random.randint(0, total_tokens - block_size + 1)
             end = start + block_size
 
-            proposal_tokens = list(best_tokens)
-            # Refresh contiguous block.
-            for pos in range(start, end):
-                # sample a random candidate token (optionally from a small pool -> pick one randomly)
-                # For simplicity we just sample one token; could expand to pool scoring if needed.
-                pool_ids = np.random.choice(
-                    valid_vocab_ids, size=(random_pool_per_pos,)
-                )
-                chosen_id = np.random.choice(pool_ids)
-                new_tok = self.tokenizer.decode(int(chosen_id))
-                if not new_tok.strip():
-                    continue  # skip empty; retain old token
-                proposal_tokens[pos] = new_tok
+            # Generate multiple proposals by refreshing the same contiguous block with random tokens.
+            proposals_tokens = []
+            for _ in range(max(1, self.batch_size)):
+                proposal = list(best_tokens)
+                for pos in range(start, end):
+                    # Sample a small pool then choose one at random for this position
+                    pool_ids = np.random.choice(
+                        valid_vocab_ids, size=(random_pool_per_pos,)
+                    )
+                    chosen_id = np.random.choice(pool_ids)
+                    new_tok = self.tokenizer.decode(int(chosen_id))
+                    if not new_tok.strip():
+                        # skip empty; retain old token
+                        continue
+                    proposal[pos] = new_tok
+                proposals_tokens.append(proposal)
 
-            proposal_prompt = build_prompt(proposal_tokens)
+            # Build all candidate prompts and evaluate in batches
+            batch_prompts = [build_prompt(toks) for toks in proposals_tokens]
             with torch.no_grad():
-                prop_emb = self.model.encode(
-                    proposal_prompt,
+                embs = self.model.encode(
+                    batch_prompts,
                     convert_to_tensor=True,
+                    batch_size=self.batch_size,
                     show_progress_bar=False,
                 ).to(self.device)
-                sim = util.cos_sim(self.q_emb, prop_emb).item()
+                scores = util.cos_sim(self.q_emb, embs).squeeze(0)  # [batch]
+                max_score, max_idx = torch.max(scores, dim=0)
+                prop_best_sim = max_score.item()
+                best_idx = int(max_idx.item())
 
-            if sim > best_sim:
-                best_sim = sim
-                best_tokens = proposal_tokens
-                current_prompt = proposal_prompt
+            if prop_best_sim > best_sim:
+                best_sim = prop_best_sim
+                best_tokens = proposals_tokens[best_idx]
+                current_prompt = batch_prompts[best_idx]
                 no_improve = 0
             else:
                 no_improve += 1
@@ -402,7 +409,7 @@ class BlackBoxAttack:
                 {
                     "step": step,
                     "best_score": best_overall[1],
-                    "beam_scores": [b for (_, b) in beams],
+                    "beam_scores": [b for ((_, b)) in beams],
                 }
             )
             if verbose:
