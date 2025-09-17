@@ -11,7 +11,6 @@ class BlackBoxAttack:
         self,
         model: SentenceTransformer,
         q: str,
-        # corpus: list[str],
         num_tokens=20,
         num_pool=500,
         device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
@@ -21,10 +20,6 @@ class BlackBoxAttack:
         self.model = model
         # The query we optimize for
         self.q_emb = self.model.encode(q, convert_to_tensor=True).to(device)
-        # The corpus
-        # self.corpus = corpus
-        # Embedding of corpus
-        # self.corpus_emb = open("")
         # Amount of tokens to append to p_adv
         self.num_tokens = num_tokens
         # Amount of tokens to draw on each round
@@ -32,9 +27,9 @@ class BlackBoxAttack:
         # Compute the embedding of each token and store the result in a matrix E
         self.tokenizer = model.tokenizer
         self.device = device
-        self.batch_size = batch_size  # added
+        self.batch_size = batch_size
 
-    def attack(self, p_adv: str):
+    def random_attack(self, p_adv: str):
         curr_p = p_adv
         tokens = []
 
@@ -212,6 +207,29 @@ class BlackBoxAttack:
                 break
 
         return best_tokens, current_prompt, history
+
+    def combination_attack(
+        self,
+        base_prompt: str,
+        total_tokens: int = 20,
+        p_init: float = 0.5,
+        num_iters: int = 500,
+        random_pool_per_pos: int = 50,
+        early_stop_patience: int = 100,
+        seed: int | None = None,
+    ):
+        tokens = self.random_attack(base_prompt)
+        s_tokens, current_prompt, history = self.square_attack(
+            base_prompt,
+            total_tokens,
+            p_init,
+            num_iters,
+            random_pool_per_pos,
+            early_stop_patience,
+            seed,
+            tokens,
+        )
+        return s_tokens, current_prompt, history
 
     def adversarial_decoding_rag(
         self,
@@ -437,17 +455,3 @@ class BlackBoxAttack:
 
         self._valid_vocab_ids = np.array(valid_ids)
         return self._valid_vocab_ids
-
-    # def add_to_corpus(self, c: str):
-    #     corpus = self.corpus.tolist()
-    #     corpus.append(c)
-    #     self.corpus = np.array(corpus)
-    #     self.corpus_emb.append(self.model.encode(c, convert_to_tensor=True))
-
-    # def get_top_k(self, q: str, k=5):
-    #     q_emb = self.model.encode(q, convert_to_tensor=True)
-    #     topk = torch.topk(
-    #         torch.tensor([self.cos_sim(q_emb, c_emb) for c_emb in self.corpus_emb]), k=k
-    #     )
-    #     print(topk)
-    #     return self.corpus[topk.indices]
