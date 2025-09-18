@@ -229,7 +229,7 @@ def main():
         }
         trial_records.append(record)
         print(
-            f"[Trial {trial}/{args.trials}] total_tokens={total_tokens} p_init={p_init:.f2} num_iters={num_iters} random_pool_per_pos={random_pool_per_pos} early_stop_patience={early_stop_patience} -> query_sim={avg_query_sim:.4f} tokens={avg_tokens:.1f} time={avg_runtime:.2f}s"
+            f"[Trial {trial}/{args.trials}] total_tokens={total_tokens} p_init={p_init:.2f} num_iters={num_iters} random_pool_per_pos={random_pool_per_pos} early_stop_patience={early_stop_patience} -> query_sim={avg_query_sim:.4f} tokens={avg_tokens:.1f} time={avg_runtime:.2f}s"
         )
 
         # Incremental save
