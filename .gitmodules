@@ -1,0 +1,3 @@
+[submodule "src/adversarial_decoding"]
+	path = src/adversarial_decoding
+	url = https://github.com/collinzrj/adversarial_decoding.git

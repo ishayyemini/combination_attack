@@ -1,1 +1,4 @@
 data
+monitor.sh
+run.slurm
+src/data
