@@ -34,13 +34,13 @@ class BlackBoxAttack:
 
         p_adv_emb = self.model.encode(p_adv, convert_to_tensor=True).to(self.device)
         base_sim = util.cos_sim(self.q_emb, p_adv_emb).item()
-        print(f"initial similarity: {base_sim}")
+        # print(f"initial similarity: {base_sim}")
 
         iter_best_score = 0
         valid_vocab_ids = self._get_valid_vocab_ids()
 
         for n in range(self.num_tokens):
-            print(f"iteration {n + 1}")
+            # print(f"iteration {n + 1}")
             pool = np.random.choice(valid_vocab_ids, size=(self.num_pool,))
 
             # compute current baseline similarity for this iteration
@@ -79,13 +79,13 @@ class BlackBoxAttack:
             if best_token is not None:
                 tokens.append(best_token)
                 curr_p += " " + best_token
-                print(
-                    f"best token: {best_token}, current similarity: {iter_best_score}\n"
-                )
-            else:
-                print("no improving token found\n")
+                # print(
+                #     f"best token: {best_token}, current similarity: {iter_best_score}\n"
+                # )
+            # else:
+            # print("no improving token found\n")
 
-        print(f"final similarity: {iter_best_score}")
+        # print(f"final similarity: {iter_best_score}")
         return tokens
 
     def square_attack(

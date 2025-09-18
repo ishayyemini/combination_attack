@@ -57,7 +57,7 @@ with open(local_results_path) as f:
 print("Results loaded successfully.")
 
 
-test_size = 50
+test_size = 5
 
 chosen_queries = np.random.choice(
     list(queries.keys()), size=(test_size,), replace=False
@@ -113,8 +113,8 @@ for i, qid in enumerate(tqdm(chosen_queries)):
 
     bb_attack = BlackBoxAttack(model, q)
 
-    print("Attacking after stuffing the query...")
-    p_adv += " " + q.replace("query: ", "")
+    print("Attacking without stuffing the query...")
+    # p_adv += " " + q.replace("query: ", "")
 
     print()
     print(f"Attack number {i + 1}")
