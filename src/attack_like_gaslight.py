@@ -57,7 +57,7 @@ with open(local_results_path) as f:
 print("Results loaded successfully.")
 
 
-test_size = 5
+test_size = 50
 
 chosen_queries = np.random.choice(
     list(queries.keys()), size=(test_size,), replace=False

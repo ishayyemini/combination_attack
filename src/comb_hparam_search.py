@@ -151,7 +151,8 @@ def main():
         p_init = random.uniform(args.p_init_min, args.p_init_max)
         num_iters = sample_int(args.num_iters_min, args.num_iters_max)
         random_pool_per_pos = sample_int(args.pool_min, args.pool_max)
-        early_stop_patience = sample_int(args.stop_min, args.stop_max)
+        # early_stop_patience = sample_int(args.stop_min, args.stop_max)
+        early_stop_patience = 100
 
         per_query_metrics = []
         t0_trial = time.time()
@@ -159,9 +160,9 @@ def main():
         for qid in tqdm(trial_query_ids):
             q_text = queries[qid]
 
-            # Start from poison as base passage + query stuffing
+            # Start from poison as base passage without stuffing
             p_adv = "passage: " + np.random.choice(toxic_prefixes).strip()
-            base_prompt = p_adv + " " + q_text.replace("query: ", "")
+            base_prompt = p_adv
 
             # Initialize attack object per query (stores q_emb)
             bb_attack = BlackBoxAttack(model, q_text, device=device)
