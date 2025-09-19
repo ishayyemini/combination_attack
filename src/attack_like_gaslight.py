@@ -153,7 +153,7 @@ def run_attack(model_hf_name, dataset_name, trials, device, index):
     adv_similarities = []
 
     for i, qid in enumerate(tqdm(chosen_qids, desc=f"Trials {index}")):
-        print(f"Trial number {i + 1} on inside attack {index}")
+        print(f"Trial number {i + 1} inside attack {index}")
 
         best_pid = list(results[qid].keys())[0]
 
