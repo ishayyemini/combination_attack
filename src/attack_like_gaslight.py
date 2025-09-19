@@ -2,14 +2,18 @@ import torch
 from sentence_transformers import SentenceTransformer
 import data_utils
 from huggingface_hub import hf_hub_download
+from huggingface_hub.utils import disable_progress_bars
 import json
 import numpy as np
 from datasets import load_dataset
 from tqdm import tqdm
 import argparse
+import pandas as pd
+from pathlib import Path
 
 from attack import BlackBoxAttack
 
+disable_progress_bars()
 
 datasets = {"msmarco", "nq"}
 models = [
@@ -38,6 +42,8 @@ similarities = {
 }
 toxic_prefixes = []
 
+attack_records = []
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Test attack like gaslight knows-all")
@@ -45,6 +51,7 @@ def parse_args():
     parser.add_argument(
         "--device", default="cuda" if torch.cuda.is_available() else "cpu"
     )
+    parser.add_argument("--out", default="attack_like_gaslight")
     return parser.parse_args()
 
 
@@ -117,7 +124,7 @@ def calc_ranking(sim, qid, results):
     return ranking
 
 
-def run_attack(model_hf_name, dataset_name, trials, device):
+def run_attack(model_hf_name, dataset_name, trials, device, out_csv):
     print(f"Running attack on model: {model_hf_name}, dataset: {dataset_name}")
 
     model = load_model(model_hf_name, device)
@@ -142,7 +149,7 @@ def run_attack(model_hf_name, dataset_name, trials, device):
     stuffing_similarities = []
     adv_similarities = []
 
-    for i, qid in enumerate(tqdm(chosen_qids, desc="Attacking")):
+    for i, qid in enumerate(tqdm(chosen_qids, desc="Trials")):
         print(f"Attack number {i + 1}")
 
         best_pid = list(results[qid].keys())[0]
@@ -217,6 +224,30 @@ def run_attack(model_hf_name, dataset_name, trials, device):
         adv_rankings.append(calc_ranking(adv_sim, qid, results))
         print("\n", flush=True)
 
+    record = {
+        "model": model_hf_name,
+        "dataset": dataset_name,
+        "similarity": similarities[model_hf_name],
+        "trials": trials,
+        "info_appeared_1": sum(r == 0 for r in info_rankings) / trials,
+        "info_appeared_5": sum(r < 5 for r in info_rankings) / trials,
+        "info_appeared_10": sum(r < 10 for r in info_rankings) / trials,
+        "info_sim": sum(info_similarities) / trials,
+        "stuffing_appeared_1": sum(r == 0 for r in stuffing_rankings) / trials,
+        "stuffing_appeared_5": sum(r < 5 for r in stuffing_rankings) / trials,
+        "stuffing_appeared_10": sum(r < 10 for r in stuffing_rankings) / trials,
+        "stuffing_sim": sum(stuffing_similarities) / trials,
+        "adv_appeared_1": sum(r == 0 for r in adv_rankings) / trials,
+        "adv_appeared_5": sum(r < 5 for r in adv_rankings) / trials,
+        "adv_appeared_10": sum(r < 10 for r in adv_rankings) / trials,
+        "adv_sim": sum(adv_similarities) / trials,
+    }
+    attack_records.append(record)
+
+    # incrementally save results to CSV
+    df = pd.DataFrame(attack_records)
+    df.to_csv(out_csv, index=False)
+
     print()
     print(f"Rankings of original passages: {info_rankings}")
     print(f"Rankings of stuffing passages: {stuffing_rankings}")
@@ -247,10 +278,20 @@ def run_attack(model_hf_name, dataset_name, trials, device):
 
 def main():
     args = parse_args()
-    for dataset_name in datasets:
-        for model_idx in datasets_models[dataset_name]:
-            model_hf_name = models[model_idx]
-            run_attack(model_hf_name, dataset_name, args.trials, args.device)
+    with tqdm(
+        total=sum([len(datasets_models[d]) for d in datasets]), desc="Attacks"
+    ) as pbar:
+        for dataset_name in datasets:
+            for model_idx in datasets_models[dataset_name]:
+                model_hf_name = models[model_idx]
+                run_attack(
+                    model_hf_name,
+                    dataset_name,
+                    args.trials,
+                    args.device,
+                    Path(args.out).with_suffix(".csv"),
+                )
+                pbar.update(1)
 
 
 if __name__ == "__main__":
