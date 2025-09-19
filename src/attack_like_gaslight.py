@@ -6,14 +6,17 @@ from huggingface_hub.utils import disable_progress_bars
 import json
 import numpy as np
 from datasets import load_dataset
+from datasets.utils.logging import disable_progress_bar
 from tqdm import tqdm
 import argparse
 import pandas as pd
 from pathlib import Path
+import os
 
 from attack import BlackBoxAttack
 
 disable_progress_bars()
+disable_progress_bar()
 
 datasets = {"msmarco", "nq"}
 models = [
@@ -42,15 +45,10 @@ similarities = {
 }
 toxic_prefixes = []
 
-attack_records = []
-
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Test attack like gaslight knows-all")
     parser.add_argument("--trials", type=int, default=50)
-    parser.add_argument(
-        "--device", default="cuda" if torch.cuda.is_available() else "cpu"
-    )
     parser.add_argument("--out", default="attack_like_gaslight")
     return parser.parse_args()
 
@@ -124,19 +122,24 @@ def calc_ranking(sim, qid, results):
     return ranking
 
 
-def run_attack(model_hf_name, dataset_name, trials, device, out_csv):
-    print(f"Running attack on model: {model_hf_name}, dataset: {dataset_name}")
+def similarity_fn(kind):
+    if kind == "cos_sim":
+        return torch.nn.CosineSimilarity(dim=0, eps=1e-6)
+    else:
+        return lambda x, y: torch.dot(x, y)
+
+
+def run_attack(model_hf_name, dataset_name, trials, device, index):
+    print(
+        f"Running attack on model: {model_hf_name}, dataset: {dataset_name}, index: {index}"
+    )
 
     model = load_model(model_hf_name, device)
-
     corpus, queries = load_ds(dataset_name, model_hf_name)
-
     results = load_results(dataset_name, model_hf_name)
 
-    if similarities[model_hf_name] == "cos_sim":
-        sim = torch.nn.CosineSimilarity(dim=0, eps=1e-6)
-    else:
-        sim = lambda x, y: torch.dot(x, y)
+    sim_kind = similarities[model_hf_name]
+    sim = similarity_fn(sim_kind)
 
     chosen_qids = np.random.choice(list(queries.keys()), size=(trials,), replace=False)
 
@@ -149,8 +152,8 @@ def run_attack(model_hf_name, dataset_name, trials, device, out_csv):
     stuffing_similarities = []
     adv_similarities = []
 
-    for i, qid in enumerate(tqdm(chosen_qids, desc="Trials")):
-        print(f"Attack number {i + 1}")
+    for i, qid in enumerate(tqdm(chosen_qids, desc=f"Trials {index}")):
+        print(f"Trial number {i + 1} on inside attack {index}")
 
         best_pid = list(results[qid].keys())[0]
 
@@ -162,13 +165,16 @@ def run_attack(model_hf_name, dataset_name, trials, device, out_csv):
         info = get_toxic_passage(model_hf_name)
         print(f"info: {info}")
 
-        # calculate encodings
-        q_enc = model.encode(q, convert_to_tensor=True)
-        p_enc = model.encode(p, convert_to_tensor=True)
-        info_enc = model.encode(info, convert_to_tensor=True)
-        stuffing_enc = model.encode(
-            info + " " + q.replace("query: ", ""), convert_to_tensor=True
-        )
+        # batch encodings (except adv which depends on attack)
+        base_texts = [
+            q,
+            p,
+            info,
+            info + " " + q.replace("query: ", ""),
+        ]  # q, best passage, info, stuffing
+        with torch.inference_mode():
+            encs = model.encode(base_texts, convert_to_tensor=True)
+        q_enc, p_enc, info_enc, stuffing_enc = encs
 
         # calculate similarities
         best_sim = sim(q_enc, p_enc).item()
@@ -215,7 +221,8 @@ def run_attack(model_hf_name, dataset_name, trials, device, out_csv):
         print(f"adversarial: {p_adv}")
 
         # calculate adv similarity
-        p_adv_enc = model.encode(p_adv, convert_to_tensor=True)
+        with torch.inference_mode():
+            p_adv_enc = model.encode(p_adv, convert_to_tensor=True)
         adv_sim = sim(q_enc, p_adv_enc).item()
         print(f"Similarity between query and attacked passage: {adv_sim}")
 
@@ -227,7 +234,7 @@ def run_attack(model_hf_name, dataset_name, trials, device, out_csv):
     record = {
         "model": model_hf_name,
         "dataset": dataset_name,
-        "similarity": similarities[model_hf_name],
+        "similarity": sim_kind,
         "trials": trials,
         "info_appeared_1": sum(r == 0 for r in info_rankings) / trials,
         "info_appeared_5": sum(r < 5 for r in info_rankings) / trials,
@@ -242,11 +249,6 @@ def run_attack(model_hf_name, dataset_name, trials, device, out_csv):
         "adv_appeared_10": sum(r < 10 for r in adv_rankings) / trials,
         "adv_sim": sum(adv_similarities) / trials,
     }
-    attack_records.append(record)
-
-    # incrementally save results to CSV
-    df = pd.DataFrame(attack_records)
-    df.to_csv(out_csv, index=False)
 
     print()
     print(f"Rankings of original passages: {info_rankings}")
@@ -275,23 +277,51 @@ def run_attack(model_hf_name, dataset_name, trials, device, out_csv):
     )
     print("\n\n\n\n", flush=True)
 
+    return record
+
+
+def build_tasks():
+    tasks = []
+    i = 0
+    for dataset_name in datasets:
+        for model_idx in datasets_models[dataset_name]:
+            tasks.append((models[model_idx], dataset_name, i))
+            i += 1
+    return tasks
+
 
 def main():
     args = parse_args()
-    with tqdm(
-        total=sum([len(datasets_models[d]) for d in datasets]), desc="Attacks"
-    ) as pbar:
-        for dataset_name in datasets:
-            for model_idx in datasets_models[dataset_name]:
-                model_hf_name = models[model_idx]
-                run_attack(
-                    model_hf_name,
-                    dataset_name,
-                    args.trials,
-                    args.device,
-                    Path(args.out).with_suffix(".csv"),
-                )
-                pbar.update(1)
+    out_path = Path(args.out).with_suffix(".csv")
+
+    all_tasks = build_tasks()
+
+    # SLURM environment
+    rank = int(os.environ.get("SLURM_PROCID", "0"))
+    world_size = int(os.environ.get("SLURM_NTASKS", "1"))
+
+    my_tasks = all_tasks[rank::world_size]
+    print(
+        f"SLURM rank {rank}/{world_size} handling {len(my_tasks)} of {len(all_tasks)} tasks"
+    )
+
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    records = []
+    for model_hf_name, dataset_name, i in my_tasks:
+        rec = run_attack(model_hf_name, dataset_name, args.trials, device, i)
+        records.append(rec)
+        # Write (append or create)
+        if out_path.exists():
+            existing = pd.read_csv(out_path)
+            combined = pd.concat([existing, pd.DataFrame(records)], ignore_index=True)
+            combined.drop_duplicates(
+                subset=["model", "dataset", "trials"], keep="last"
+            ).to_csv(out_path, index=False)
+        else:
+            pd.DataFrame(records).to_csv(out_path, index=False)
+        records = []  # flush after write to avoid duplication
+
+    print(f"done on rank {rank}")
 
 
 if __name__ == "__main__":
