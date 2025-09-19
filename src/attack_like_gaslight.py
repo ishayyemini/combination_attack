@@ -191,10 +191,10 @@ def run_attack(model_hf_name, dataset_name, trials, device, out_csv):
         bb_attack = BlackBoxAttack(model, q)
         tokens, _, _ = bb_attack.combination_attack(
             info,
-            p_init=0.3046,
-            total_tokens=65,
-            num_iters=2000,
-            random_pool_per_pos=183,
+            p_init=0.3946,
+            total_tokens=72,
+            num_iters=2940,
+            random_pool_per_pos=316,
         )
 
         # doc_ids = list(results[qid].keys())[:10]
