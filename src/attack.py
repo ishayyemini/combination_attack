@@ -1,4 +1,6 @@
 import re
+from typing import Optional, List
+
 from sentence_transformers import SentenceTransformer
 import torch
 import numpy as np
@@ -96,8 +98,8 @@ class BlackBoxAttack:
         num_iters: int = 500,
         random_pool_per_pos: int = 50,
         early_stop_patience: int = 100,
-        seed: int | None = None,
-        initial_tokens: list[str] | None = None,
+        seed: Optional[int] = None,
+        initial_tokens: Optional[List[str]] = None,
     ):
         """A 1D adaptation of the image Square Attack for token sequence (prompt) optimization.
 
@@ -223,7 +225,7 @@ class BlackBoxAttack:
         num_iters: int = 500,
         random_pool_per_pos: int = 50,
         early_stop_patience: int = 100,
-        seed: int | None = None,
+        seed: Optional[int] = None,
     ):
         tokens = self.random_attack(base_prompt)
         s_tokens, current_prompt, history = self.square_attack(
@@ -241,11 +243,11 @@ class BlackBoxAttack:
     def adversarial_decoding_rag(
         self,
         base_prompt: str,
-        reference_texts: list[str],
+        reference_texts: List[str],
         max_tokens: int = 32,
         beam_size: int = 5,
         pool_size: int = 120,
-        seed: int | None = None,
+        seed: Optional[int] = None,
         use_query_similarity: bool = True,
         sample_per_beam: int = 40,
         temperature: float = 1.0,
@@ -311,7 +313,7 @@ class BlackBoxAttack:
         # Beam entries: (tokens_list, score, embedding_cache_string)
         # We store only the appended tokens; full prompt constructed on demand.
         # Initial score is similarity of base prompt.
-        def score_full_prompt(tokens_list: list[str]):
+        def score_full_prompt(tokens_list: List[str]):
             full_text = (
                 base_prompt
                 if not tokens_list

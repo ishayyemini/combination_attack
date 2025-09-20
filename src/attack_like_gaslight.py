@@ -1,3 +1,4 @@
+import sys
 import torch
 from sentence_transformers import SentenceTransformer
 import data_utils
@@ -12,6 +13,14 @@ import argparse
 import pandas as pd
 from pathlib import Path
 import os
+
+
+dir_path = os.path.dirname(os.path.realpath(__file__))
+sys.path.append(f"{dir_path}/GASLITE")
+
+from GASLITE.src.attacks.gaslite import gaslite_attack
+from GASLITE.src.full_attack import initialize_p_adv
+from GASLITE.src.models.retriever import RetrieverModel
 
 from attack import BlackBoxAttack
 
@@ -46,6 +55,48 @@ similarities = {
 toxic_prefixes = []
 
 
+def run_gaslite(model_hf_name, model, info, q, device):
+    print("Running gaslite attack...")
+
+    P_adv, trigger_slice, P_adv_before = initialize_p_adv(
+        model=model,
+        trigger_loc="suffix",
+        trigger_len=72,
+        adv_passage_init="dummy_token",
+        mal_info=info,
+        model_hf_name=model_hf_name,
+    )
+    P_adv = P_adv.to(device)
+    emb_targets = model.embed(q).to(device)
+
+    n_iter = 100
+    n_grad = 5
+    n_cand = 128
+    n_flip = 20
+    time_limit_in_seconds = None
+
+    best_input_ids, out_metrics = gaslite_attack(
+        model=model,
+        # Passage to craft:
+        trigger_slice=trigger_slice,
+        inputs=P_adv,
+        emb_targets=emb_targets,
+        # Attack params:
+        n_iter=n_iter,
+        n_grad=n_grad,
+        beam_search_config=dict(perform=True, n_cand=n_cand, n_flip=n_flip),
+        time_limit_in_seconds=time_limit_in_seconds,
+    )
+
+    P_adv["input_ids"] = best_input_ids
+
+    return model.tokenizer.decode(
+        P_adv["input_ids"][0],
+        skip_special_tokens=True,
+        clean_up_tokenization_spaces=True,
+    )
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Test attack like gaslight knows-all")
     parser.add_argument("--trials", type=int, default=50)
@@ -74,8 +125,14 @@ def load_model(model_hf_name, device):
 
     print(f"Loading model: {model_hf_name} on device: {device}")
     model = SentenceTransformer(model_hf_name).to(device)
+    gaslite_model = RetrieverModel(
+        model_hf_name=model_hf_name,
+        sim_func_name=similarities[model_hf_name],
+        device=device,
+    )
     print("Model loaded successfully.")
-    return model
+
+    return model, gaslite_model
 
 
 def load_ds(dataset_name, model_hf_name):
@@ -95,7 +152,7 @@ def load_ds(dataset_name, model_hf_name):
 
 
 def load_results(dataset_name, model_hf_name):
-    filename = f"{dataset_name}-test_1.0_{model_hf_name.split("/")[1]}_{similarities[model_hf_name]}.json"
+    filename = f"{dataset_name}-test_1.0_{model_hf_name.split('/')[1]}_{similarities[model_hf_name]}.json"
     print(f"Downloading results from HuggingFace Hub: {filename}")
     try:
         local_results_path = hf_hub_download(
@@ -134,7 +191,7 @@ def run_attack(model_hf_name, dataset_name, trials, device, index):
         f"Running attack on model: {model_hf_name}, dataset: {dataset_name}, index: {index}"
     )
 
-    model = load_model(model_hf_name, device)
+    model, gaslite_model = load_model(model_hf_name, device)
     corpus, queries = load_ds(dataset_name, model_hf_name)
     results = load_results(dataset_name, model_hf_name)
 
@@ -146,11 +203,13 @@ def run_attack(model_hf_name, dataset_name, trials, device, index):
     info_rankings = []
     stuffing_rankings = []
     adv_rankings = []
+    gaslite_rankings = []
 
     best_similarities = []
     info_similarities = []
     stuffing_similarities = []
     adv_similarities = []
+    gaslite_similarities = []
 
     for i, qid in enumerate(tqdm(chosen_qids, desc=f"Trials {index}")):
         print(f"Trial number {i + 1} inside attack {index}")
@@ -193,7 +252,21 @@ def run_attack(model_hf_name, dataset_name, trials, device, index):
         info_rankings.append(calc_ranking(info_sim, qid, results))
         stuffing_rankings.append(calc_ranking(stuffing_sim, qid, results))
 
+        p_gaslite = run_gaslite(model_hf_name, gaslite_model, info, q, device)
+        print(f"gaslite: {p_gaslite}")
+
+        # calculate gaslite similarity
+        with torch.inference_mode():
+            p_gaslite_enc = model.encode(p_gaslite, convert_to_tensor=True)
+        gaslite_sim = sim(q_enc, p_gaslite_enc).item()
+        print(f"Similarity between query and GASLITE passage: {gaslite_sim}")
+
+        # store gaslite similarity and ranking
+        gaslite_similarities.append(gaslite_sim)
+        gaslite_rankings.append(calc_ranking(gaslite_sim, qid, results))
+
         # perform attack
+        print("Performing black-box attack...")
         bb_attack = BlackBoxAttack(model, q)
         tokens, _, _ = bb_attack.combination_attack(
             info,
@@ -248,6 +321,10 @@ def run_attack(model_hf_name, dataset_name, trials, device, index):
         "adv_appeared_5": sum(r < 5 for r in adv_rankings) / trials,
         "adv_appeared_10": sum(r < 10 for r in adv_rankings) / trials,
         "adv_sim": sum(adv_similarities) / trials,
+        "gaslite_appeared_1": sum(r == 0 for r in gaslite_rankings) / trials,
+        "gaslite_appeared_5": sum(r < 5 for r in gaslite_rankings) / trials,
+        "gaslite_appeared_10": sum(r < 10 for r in gaslite_rankings) / trials,
+        "gaslite_sim": sum(gaslite_similarities) / trials,
     }
 
     print()
