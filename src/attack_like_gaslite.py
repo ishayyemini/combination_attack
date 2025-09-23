@@ -27,7 +27,7 @@ from attack import BlackBoxAttack
 disable_progress_bars()
 disable_progress_bar()
 
-datasets = {"msmarco", "nq"}
+datasets = ["msmarco", "nq"]
 models = [
     "sentence-transformers/all-MiniLM-L6-v2",
     "sentence-transformers/all-mpnet-base-v2",
@@ -414,6 +414,8 @@ def main():
     print(
         f"SLURM rank {rank}/{world_size} handling {len(my_tasks)} of {len(all_tasks)} tasks"
     )
+    for t in my_tasks:
+        print(f"SLURM rank {rank} will do task: {t}")
 
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     records = []
