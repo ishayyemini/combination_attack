@@ -16,6 +16,7 @@ class BlackBoxAttack:
         num_pool=500,
         device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
         batch_size=128,
+        sim=util.cos_sim,
     ):
         # The embedding model
         self.model = model
@@ -29,13 +30,14 @@ class BlackBoxAttack:
         self.tokenizer = model.tokenizer
         self.device = device
         self.batch_size = batch_size
+        self.sim = sim
 
     def random_attack(self, p_adv: str):
         curr_p = p_adv
         tokens = []
 
         p_adv_emb = self.model.encode(p_adv, convert_to_tensor=True).to(self.device)
-        base_sim = util.cos_sim(self.q_emb, p_adv_emb).item()
+        base_sim = self.sim(self.q_emb, p_adv_emb).item()
         # print(f"initial similarity: {base_sim}")
 
         iter_best_score = 0
@@ -49,7 +51,7 @@ class BlackBoxAttack:
             p_adv_emb = self.model.encode(curr_p, convert_to_tensor=True).to(
                 self.device
             )
-            iter_best_score = util.cos_sim(self.q_emb, p_adv_emb).item()
+            iter_best_score = self.sim(self.q_emb, p_adv_emb).item()
             best_token = None
 
             # evaluate candidates in parallel by batching
@@ -71,7 +73,7 @@ class BlackBoxAttack:
                 ).to(self.device)
 
                 # vectorized cosine similarity against q_emb
-                scores = util.cos_sim(self.q_emb, embs).squeeze(0)  # shape: [batch]
+                scores = self.sim(self.q_emb, embs).squeeze(0)  # shape: [batch]
                 max_score, max_idx = torch.max(scores, dim=0)
                 ms = max_score.item()
                 if ms > iter_best_score:
@@ -155,8 +157,8 @@ class BlackBoxAttack:
             emb = self.model.encode(
                 current_prompt, convert_to_tensor=True, show_progress_bar=False
             ).to(self.device)
-            best_sim = util.cos_sim(self.q_emb, emb).item()
-`
+            best_sim = self.sim(self.q_emb, emb).item()
+
         history = [(0, best_sim)]
         best_tokens = list(appended_tokens)
         no_improve = 0
@@ -196,7 +198,7 @@ class BlackBoxAttack:
                     batch_size=self.batch_size,
                     show_progress_bar=False,
                 ).to(self.device)
-                scores = util.cos_sim(self.q_emb, embs).squeeze(0)  # [batch]
+                scores = self.sim(self.q_emb, embs).squeeze(0)  # [batch]
                 max_score, max_idx = torch.max(scores, dim=0)
                 prop_best_sim = max_score.item()
                 best_idx = int(max_idx.item())
@@ -328,9 +330,9 @@ class BlackBoxAttack:
             # Score parts
             scores = []
             # Always include mean reference similarity
-            scores.append(util.cos_sim(emb, mean_ref).item())
+            scores.append(self.sim(emb, mean_ref).item())
             if use_query_similarity:
-                scores.append(util.cos_sim(emb, self.q_emb).item())
+                scores.append(self.sim(emb, self.q_emb).item())
             return sum(scores) / len(scores), emb
 
         base_score, _ = score_full_prompt([])
@@ -386,9 +388,9 @@ class BlackBoxAttack:
                     normalize_embeddings=True,
                 ).to(self.device)
                 # Compute similarity metrics (correctly as vectors)
-                ref_sims = util.cos_sim(embs, mean_ref).squeeze(1)  # shape [batch]
+                ref_sims = self.sim(embs, mean_ref).squeeze(1)  # shape [batch]
                 if use_query_similarity:
-                    q_sims = util.cos_sim(embs, self.q_emb).squeeze(1)  # shape [batch]
+                    q_sims = self.sim(embs, self.q_emb).squeeze(1)  # shape [batch]
                     combined = (ref_sims + q_sims) / 2.0
                 else:
                     combined = ref_sims

@@ -1,6 +1,6 @@
 import sys
 import torch
-from sentence_transformers import SentenceTransformer
+from sentence_transformers import SentenceTransformer, util
 import data_utils
 from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import disable_progress_bars
@@ -185,9 +185,9 @@ def calc_ranking(sim, qid, results):
 
 def similarity_fn(kind):
     if kind == "cos_sim":
-        return torch.nn.CosineSimilarity(dim=0, eps=1e-6)
+        return util.cos_sim
     else:
-        return lambda x, y: torch.dot(x, y)
+        return util.dot_score
 
 
 def run_attack(model_hf_name, dataset_name, trials, device, index, gaslite):
@@ -272,7 +272,7 @@ def run_attack(model_hf_name, dataset_name, trials, device, index, gaslite):
 
         # perform attack
         print("Performing black-box attack...")
-        bb_attack = BlackBoxAttack(model, q)
+        bb_attack = BlackBoxAttack(model, q, sim=sim)
         tokens, _, _ = bb_attack.combination_attack(
             info,
             p_init=0.3946,
