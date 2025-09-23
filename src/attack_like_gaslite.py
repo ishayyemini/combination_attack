@@ -101,6 +101,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Test attack like gaslight knows-all")
     parser.add_argument("--trials", type=int, default=50)
     parser.add_argument("--out", default="attack_like_gaslight")
+    parser.add_argument("--gaslite", action="store_true", help="Run GASLITE attack")
     return parser.parse_args()
 
 
@@ -119,17 +120,20 @@ def get_toxic_passage(model_hf_name):
     return passage
 
 
-def load_model(model_hf_name, device):
+def load_model(model_hf_name, device, gaslite):
     if model_hf_name not in models:
         raise ValueError(f"Model {model_hf_name} not supported.")
 
     print(f"Loading model: {model_hf_name} on device: {device}")
     model = SentenceTransformer(model_hf_name).to(device)
-    gaslite_model = RetrieverModel(
-        model_hf_name=model_hf_name,
-        sim_func_name=similarities[model_hf_name],
-        device=device,
-    )
+    if gaslite:
+        gaslite_model = RetrieverModel(
+            model_hf_name=model_hf_name,
+            sim_func_name=similarities[model_hf_name],
+            device=device,
+        )
+    else:
+        gaslite_model = None
     print("Model loaded successfully.")
 
     return model, gaslite_model
@@ -186,12 +190,12 @@ def similarity_fn(kind):
         return lambda x, y: torch.dot(x, y)
 
 
-def run_attack(model_hf_name, dataset_name, trials, device, index):
+def run_attack(model_hf_name, dataset_name, trials, device, index, gaslite):
     print(
         f"Running attack on model: {model_hf_name}, dataset: {dataset_name}, index: {index}"
     )
 
-    model, gaslite_model = load_model(model_hf_name, device)
+    model, gaslite_model = load_model(model_hf_name, device, gaslite)
     corpus, queries = load_ds(dataset_name, model_hf_name)
     results = load_results(dataset_name, model_hf_name)
 
@@ -252,18 +256,19 @@ def run_attack(model_hf_name, dataset_name, trials, device, index):
         info_rankings.append(calc_ranking(info_sim, qid, results))
         stuffing_rankings.append(calc_ranking(stuffing_sim, qid, results))
 
-        p_gaslite = run_gaslite(model_hf_name, gaslite_model, info, q, device)
-        print(f"gaslite: {p_gaslite}")
+        if gaslite:
+            p_gaslite = run_gaslite(model_hf_name, gaslite_model, info, q, device)
+            print(f"gaslite: {p_gaslite}")
 
-        # calculate gaslite similarity
-        with torch.inference_mode():
-            p_gaslite_enc = model.encode(p_gaslite, convert_to_tensor=True)
-        gaslite_sim = sim(q_enc, p_gaslite_enc).item()
-        print(f"Similarity between query and GASLITE passage: {gaslite_sim}")
+            # calculate gaslite similarity
+            with torch.inference_mode():
+                p_gaslite_enc = model.encode(p_gaslite, convert_to_tensor=True)
+            gaslite_sim = sim(q_enc, p_gaslite_enc).item()
+            print(f"Similarity between query and GASLITE passage: {gaslite_sim}")
 
-        # store gaslite similarity and ranking
-        gaslite_similarities.append(gaslite_sim)
-        gaslite_rankings.append(calc_ranking(gaslite_sim, qid, results))
+            # store gaslite similarity and ranking
+            gaslite_similarities.append(gaslite_sim)
+            gaslite_rankings.append(calc_ranking(gaslite_sim, qid, results))
 
         # perform attack
         print("Performing black-box attack...")
@@ -321,11 +326,13 @@ def run_attack(model_hf_name, dataset_name, trials, device, index):
         "adv_appeared_5": sum(r < 5 for r in adv_rankings) / trials,
         "adv_appeared_10": sum(r < 10 for r in adv_rankings) / trials,
         "adv_sim": sum(adv_similarities) / trials,
-        "gaslite_appeared_1": sum(r == 0 for r in gaslite_rankings) / trials,
-        "gaslite_appeared_5": sum(r < 5 for r in gaslite_rankings) / trials,
-        "gaslite_appeared_10": sum(r < 10 for r in gaslite_rankings) / trials,
-        "gaslite_sim": sum(gaslite_similarities) / trials,
     }
+
+    if gaslite:
+        record["gaslite_appeared_1"] = sum(r == 0 for r in gaslite_rankings) / trials
+        record["gaslite_appeared_5"] = sum(r < 5 for r in gaslite_rankings) / trials
+        record["gaslite_appeared_10"] = sum(r < 10 for r in gaslite_rankings) / trials
+        record["gaslite_sim"] = sum(gaslite_similarities) / trials
 
     print()
     print(f"Rankings of original passages: {info_rankings}")
@@ -385,7 +392,9 @@ def main():
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     records = []
     for model_hf_name, dataset_name, i in my_tasks:
-        rec = run_attack(model_hf_name, dataset_name, args.trials, device, i)
+        rec = run_attack(
+            model_hf_name, dataset_name, args.trials, device, i, args.gaslite
+        )
         records.append(rec)
         # Write (append or create)
         if out_path.exists():
