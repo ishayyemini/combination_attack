@@ -156,7 +156,7 @@ class BlackBoxAttack:
                 current_prompt, convert_to_tensor=True, show_progress_bar=False
             ).to(self.device)
             best_sim = util.cos_sim(self.q_emb, emb).item()
-
+`
         history = [(0, best_sim)]
         best_tokens = list(appended_tokens)
         no_improve = 0
