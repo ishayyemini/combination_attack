@@ -102,6 +102,9 @@ def parse_args():
     parser.add_argument("--trials", type=int, default=50)
     parser.add_argument("--out", default="attack_like_gaslight")
     parser.add_argument("--gaslite", action="store_true", help="Run GASLITE attack")
+    parser.add_argument(
+        "--adv_dec", action="store_true", help="Run Adversarial Decoding attack"
+    )
     return parser.parse_args()
 
 
@@ -190,7 +193,7 @@ def similarity_fn(kind):
         return util.dot_score
 
 
-def run_attack(model_hf_name, dataset_name, trials, device, index, gaslite):
+def run_attack(model_hf_name, dataset_name, trials, device, index, gaslite, adv_dec):
     print(
         f"Running attack on model: {model_hf_name}, dataset: {dataset_name}, index: {index}"
     )
@@ -208,12 +211,14 @@ def run_attack(model_hf_name, dataset_name, trials, device, index, gaslite):
     stuffing_rankings = []
     adv_rankings = []
     gaslite_rankings = []
+    adv_dec_rankings = []
 
     best_similarities = []
     info_similarities = []
     stuffing_similarities = []
     adv_similarities = []
     gaslite_similarities = []
+    adv_dec_similarities = []
 
     for i, qid in enumerate(tqdm(chosen_qids, desc=f"Trials {index}")):
         print(f"Trial number {i + 1} inside attack {index}")
@@ -256,20 +261,6 @@ def run_attack(model_hf_name, dataset_name, trials, device, index, gaslite):
         info_rankings.append(calc_ranking(info_sim, qid, results))
         stuffing_rankings.append(calc_ranking(stuffing_sim, qid, results))
 
-        if gaslite:
-            p_gaslite = run_gaslite(model_hf_name, gaslite_model, info, q, device)
-            print(f"gaslite: {p_gaslite}")
-
-            # calculate gaslite similarity
-            with torch.inference_mode():
-                p_gaslite_enc = model.encode(p_gaslite, convert_to_tensor=True)
-            gaslite_sim = sim(q_enc, p_gaslite_enc).item()
-            print(f"Similarity between query and GASLITE passage: {gaslite_sim}")
-
-            # store gaslite similarity and ranking
-            gaslite_similarities.append(gaslite_sim)
-            gaslite_rankings.append(calc_ranking(gaslite_sim, qid, results))
-
         # perform attack
         print("Performing black-box attack...")
         bb_attack = BlackBoxAttack(model, q, sim=sim)
@@ -280,19 +271,6 @@ def run_attack(model_hf_name, dataset_name, trials, device, index, gaslite):
             num_iters=2940,
             random_pool_per_pos=316,
         )
-
-        # doc_ids = list(results[qid].keys())[:10]
-        # reference_texts = [corpus[d]["text"] for d in doc_ids]
-        # s_tokens, _, _ = bb_attack.adversarial_decoding_rag(
-        #     info,
-        #     reference_texts=reference_texts,
-        #     max_tokens=57,
-        #     beam_size=9,
-        #     pool_size=208,
-        #     sample_per_beam=104,
-        #     temperature=0.9752,
-        #     verbose=True,
-        # )
 
         # craft adversarial passage
         p_adv = info + " " + " ".join(tokens)
@@ -307,6 +285,48 @@ def run_attack(model_hf_name, dataset_name, trials, device, index, gaslite):
         # store adv similarity and ranking
         adv_similarities.append(adv_sim)
         adv_rankings.append(calc_ranking(adv_sim, qid, results))
+
+        if gaslite:
+            p_gaslite = run_gaslite(model_hf_name, gaslite_model, info, q, device)
+            print(f"gaslite: {p_gaslite}")
+
+            # calculate gaslite similarity
+            with torch.inference_mode():
+                p_gaslite_enc = model.encode(p_gaslite, convert_to_tensor=True)
+            gaslite_sim = sim(q_enc, p_gaslite_enc).item()
+            print(f"Similarity between query and GASLITE passage: {gaslite_sim}")
+
+            # store gaslite similarity and ranking
+            gaslite_similarities.append(gaslite_sim)
+            gaslite_rankings.append(calc_ranking(gaslite_sim, qid, results))
+
+        if adv_dec:
+            print("Performing adv_dec attack...")
+            doc_ids = list(results[qid].keys())[:10]
+            reference_texts = [corpus[d]["text"] for d in doc_ids]
+            s_tokens, _, _ = bb_attack.adversarial_decoding_rag(
+                info,
+                reference_texts=reference_texts,
+                max_tokens=57,
+                beam_size=9,
+                pool_size=208,
+                sample_per_beam=104,
+                temperature=0.9752,
+                verbose=False,
+            )
+            p_adv_dec = info + " " + " ".join(s_tokens)
+            print(f"adv_dec: {p_adv_dec}")
+
+            # calculate adversarial decoding similarity
+            with torch.inference_mode():
+                p_adv_dec_enc = model.encode(p_adv_dec, convert_to_tensor=True)
+            adv_dec_sim = sim(q_enc, p_adv_dec_enc).item()
+            print(f"Similarity between query and adv_dec passage: {adv_dec_sim}")
+
+            # store adversarial decoding similarity and ranking
+            adv_dec_similarities.append(adv_dec_sim)
+            adv_dec_rankings.append(calc_ranking(adv_dec_sim, qid, results))
+
         print("\n", flush=True)
 
     record = {
@@ -333,6 +353,12 @@ def run_attack(model_hf_name, dataset_name, trials, device, index, gaslite):
         record["gaslite_appeared_5"] = sum(r < 5 for r in gaslite_rankings) / trials
         record["gaslite_appeared_10"] = sum(r < 10 for r in gaslite_rankings) / trials
         record["gaslite_sim"] = sum(gaslite_similarities) / trials
+
+    if adv_dec:
+        record["adv_dec_appeared_1"] = sum(r == 0 for r in adv_dec_rankings) / trials
+        record["adv_dec_appeared_5"] = sum(r < 5 for r in adv_dec_rankings) / trials
+        record["adv_dec_appeared_10"] = sum(r < 10 for r in adv_dec_rankings) / trials
+        record["adv_dec_sim"] = sum(adv_dec_similarities) / trials
 
     print()
     print(f"Rankings of original passages: {info_rankings}")
@@ -393,7 +419,13 @@ def main():
     records = []
     for model_hf_name, dataset_name, i in my_tasks:
         rec = run_attack(
-            model_hf_name, dataset_name, args.trials, device, i, args.gaslite
+            model_hf_name=model_hf_name,
+            dataset_name=dataset_name,
+            trials=args.trials,
+            device=device,
+            index=i,
+            gaslite=args.gaslite,
+            adv_dec=args.adv_dec,
         )
         records.append(rec)
         # Write (append or create)
