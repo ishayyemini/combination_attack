@@ -5,3 +5,6 @@
 [submodule "src/GASLITE"]
 	path = src/GASLITE
 	url = https://github.com/matanbt/GASLITE.git
+[submodule "src/PoisonedRAG"]
+	path = src/PoisonedRAG
+	url = https://github.com/sleeepeer/PoisonedRAG.git
