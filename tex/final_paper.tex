@@ -1,9 +1,10 @@
 \documentclass[a4paper, sigconf]{acmart}
 \usepackage{multirow,hhline,graphicx,array}
 \usepackage{fullwidth}
+\usepackage{framed}
 \newcolumntype{M}[1]{>{\centering\arraybackslash}m{#1}}
 
-\title{Black-Box Transformation of the GASLITE Attack: \\Literature Review}
+\title{Black-Box Transformation of the GASLITE Attack}
 \author{Ishay Yemini\\Tel Aviv University\\ \today}
 \date{\today}
 
@@ -56,9 +57,9 @@ Andriushchenko et al. \cite{andriushchenko2020} introduce the Square Attack, a q
 
 \subsection{Universal Adversarial Triggers}
 
-My main direction to explore is the idea of Universal Adversarial Triggers (UATs) \cite{wallace2021}. This idea relates to the concept of manipulating text embeddings through certain token sequences. Specifically, UATs are a sequence of tokens that, when appended to any input text, can cause a ML model to produce an incorrect or targeted prediction. The work in this area introduces gradient-guided methods for discovering these triggers. While the process for finding UATs often relies on having white-box access to the model, the resulting UATs are input-agnostic and have been shown to sometimes transfer affectively to other models, even with different embeddings and architectures \cite{wallace2021}.
+My main direction to explore was the idea of Universal Adversarial Triggers (UATs) \cite{wallace2021}. This idea relates to the concept of manipulating text embeddings through certain token sequences. Specifically, UATs are a sequence of tokens that, when appended to any input text, can cause a ML model to produce an incorrect or targeted prediction. The work in this area introduces gradient-guided methods for discovering these triggers. While the process for finding UATs often relies on having white-box access to the model, the resulting UATs are input-agnostic and have been shown to sometimes transfer affectively to other models, even with different embeddings and architectures \cite{wallace2021}.
 
-UATs have been shown to demonstrate potential in attacking the safeguards of LLMs \cite{liang2025}. UATs might achieve this effect by approximating semantic information within their adversarial training region \cite{subhash2023}. This implies that the manipulation cause by UATs may not be arbitrary, but could be related to semantically meaningful directions in the embedding space, similar to the embedding manipulation goals of the GASLITE attack \cite{bentov2024}. Therefore, research should explore the possibility of finding UATs that, when appending to queries or documents, can manipulate the retrieval rankings in dense retrieval models without direct access to the gradients. This transferability property of UATs, where a trigger found from a surrogate model and might also work on the target dense retriever, is especially relevant for the black-box goal. 
+UATs have been shown to demonstrate potential in attacking the safeguards of LLMs \cite{liang2025}. UATs might achieve this effect by approximating semantic information within their adversarial training region \cite{subhash2023}. This implies that the manipulation cause by UATs may not be arbitrary, but could be related to semantically meaningful directions in the embedding space, similar to the embedding manipulation goals of the GASLITE attack \cite{bentov2024}. Therefore, I wanted to explore the possibility of finding UATs that, when appended to queries or documents, can manipulate the retrieval rankings in dense retrieval models without direct access to the gradients. This transferability property of UATs, where a trigger found from a surrogate model and might also work on the target dense retriever, is especially relevant for my black-box goal. 
 
 
 \section{Technical Approach}
@@ -82,9 +83,11 @@ The first iteration of the attack was a simple, greedy, token-by-token random se
 
 This simple attack showed some promising success with certain passages from MSMARCO using the E5 model, however when generalized to a 50-query trial in the same setting as GASLITE \cite{bentov2024}, the attack's success became minimal, managing to bring the poison to the top result of the query only once.
 
+
 \subsection{Query Stuffing}
 
 As a temporary improvement, I made an enhancement to the random attack by first appending the text of the target query directly to the end of the poison passage, before running the attack. My hypothesis was that this would immediately ground the poisoned passage to a more correct semantic region, giving the attack algorithm a stronger starting point. This simple change proved effective, allowing for almost a 62\% success rate on the same top-1, 50-query trial. 
+
 
 \subsection{Square Attack}
 
@@ -135,95 +138,9 @@ Additionally, a similar search was run to find the best hyperparameters for the 
 All hyperparameters for both attacks are detailed in Section \ref{expset} below.  
 
 
-\section{Threat Model} 
-
-Exactly as with the Knows-All setting in GASLITE \cite{bentov2024}, I attacked a single query with one adversarial passage, meaning I tried to get a suffix-controlled text as similar as possible to a random query. I averaged results on 50 randomly sampled queries, from both MSMARCO and NQ. 
-
-The attack was built as a black-box attack, which meant it had access to the tokenizer and the embedding, but otherwise it had no access to any other part of the model, such as the gradients.
-
-
-\section{Experimental Setup} \label{expset}
-
-I attacked an extensive setup to test popular retrievers, and compared my results to stuffing and GASLITE baselines.
-
-\subsubsection*{Models} I evaluated many embedding-based retreivers, mainly to compare them to existing benchmarks in GASLITE \cite{bentov2024}. The models I attacked are E5, MiniLM, GTR-T5, aMPNet, Acrtic, Contriever, Contriever-MS, ANCE, mMPNet. % TODO: CITE
-
-\subsubsection*{Datasets} I ran the experiment on two datasets, MSMARCO \cite{msmarco} and NQ \cite{nq}. MSMARCO contains a corpus of 8.8M passages and 0.5M search queries, and is a standard dataset used to evaluate RAG attacks. NQ is another database I used, mainly to compare to GASLITE \cite{bentov2024} and prove that the attack generalizes to other datasets, which contains a corpus of 2.7M passages and 3.5K search queries. For the malicious info, I sampled a random passage from ToxiGen.
-
-\subsubsection*{My Attack} The hyperparameters used in my attack were \texttt{total\_tokens=72}, \texttt{p\_init=0.3946}, \texttt{num\_iters=2940}, and \texttt{random\_pool\_per\_pos=316}.
-
-\subsubsection*{Other Attacks} For a control, I tested \textbf{\texttt{info} Only} where the adversarial passage is just the chosen \texttt{info} alone. Then, for comparison, I used \textbf{\texttt{stuffing}}, where the query was appended to the end of \texttt{info}, and \textbf{\texttt{Adv. Dec.}} \cite{advdec}, the implementation of which I recreated in order to fit within our threat model, and used the following hyperparameters: \texttt{max\_tokens=57}, \texttt{beam\_size=9}, \texttt{pool\_size=208}, \texttt{sample\_per\_beam=104}, and \texttt{temperature=0.9752}.
-
-\subsubsection*{Metrics} As with GASLITE \cite{bentov2024}, I measured the attack's success in terms of visibility, by using two metrics: \textbf{appeared@k}, which measures how often the adversarial passage appears within the top-k results, and \textbf{objective} which is the similarity score (either cosine similarity or dot product) between the query and the adversarial passage. 
-
-
-\section{Results}
-
-
-
-
-
-dgfgfd
-
-dfgfdg
-
-
-dfgfdgfd
-
-dfgfdgfdh
-sdfksd
-
-
-sdkfosd\
-
-fkdsfsdk
-msdf
-sd
-
-sdfdsf
-
-
-fsdfsd
-
-sdf
-sdfsd
-
-
-
-sdfsdfdsfsd
-
-sdfdsfsdf
-
-
-hthg
-
-
-kughmn
-
-
-g
-j
-unfgn
-
-nfgvb
-
-mghbnmg
-
-mhbmhgm
-
-gmhvbmhvnn
-
-ghvjng
-
-
-
-TO BE FILLED
-
-% EXPERIMENT DESIGN
-  
-  
-  
 \begin{table*}
+\caption{Experiment Results}
+\label{table:res}
 \begin{tabular}{lll|cccc|cccc}
   \hline
    & & & \multicolumn{4}{c}{appeared@10 (appeared@1)} & \multicolumn{4}{c}{objective} \\
@@ -233,9 +150,121 @@ TO BE FILLED
  \end{tabular}
 \end{table*}
 
-% DISCUSS RESULTS
+\section{Threat Model} 
 
-% COMPARE TO GASLITE ON CERTAIN PASSAGES
+Exactly as with the Knows-All setting in GASLITE \cite{bentov2024}, I attacked a single query with one adversarial passage, meaning I tried to get a suffix-controlled text as similar as possible to a random query. I averaged results on 50 randomly sampled queries, from both MSMARCO and NQ. 
+
+The attack was built as a black-box attack, which meant it had access to the tokenizer and the embedding, but otherwise it had no access to any other part of the model, such as the gradients.
+
+
+\section{Results}
+
+\subsection{Experimental Setup} \label{expset}
+
+I attacked an extensive setup to test popular retrievers, and compared my results to stuffing and GASLITE baselines.
+
+\subsubsection*{Models} I evaluated many embedding-based retreivers, mainly to compare them to existing benchmarks in GASLITE \cite{bentov2024}. The models I attacked are E5, MiniLM, GTR-T5, aMPNet, Acrtic, Contriever, Contriever-MS, ANCE, mMPNet. % TODO: CITE
+
+\subsubsection*{Datasets} I ran the experiment on two datasets, MSMARCO \cite{msmarco} and NQ \cite{nq}. MSMARCO contains a corpus of 8.8M passages and 0.5M search queries, and is a standard dataset used to evaluate RAG attacks. NQ is another database I used, mainly to compare to GASLITE \cite{bentov2024} and prove that the attack generalizes to other datasets, which contains a corpus of 2.7M passages and 3.5K search queries. For the malicious info, I sampled a random passage from ToxiGen.
+
+\subsubsection*{My Attack} The hyperparameters used in my attack were calibrated to achieve the highest success, and were  \texttt{total\_tokens=72}, \texttt{p\_init=0.3946}, \texttt{num\_iters=2940}, and \texttt{random\_pool\_per\_pos=316}.
+
+\subsubsection*{Other Attacks} For a control, I tested \textbf{\texttt{info} Only} where the adversarial passage is just the chosen \texttt{info} alone. Then, for comparison, I used \textbf{\texttt{stuffing}}, where the query was appended to the end of \texttt{info}, and \textbf{\texttt{Adv. Dec.}} \cite{advdec}, the implementation of which I recreated in order to fit within our threat model, and used the following hyperparameters: \texttt{max\_tokens=57}, \texttt{beam\_size=9}, \texttt{pool\_size=208}, \\\texttt{sample\_per\_beam=104}, and \texttt{temperature=0.9752}.
+
+\subsubsection*{Metrics} As with GASLITE \cite{bentov2024}, I measured the attack's success in terms of visibility, by using two metrics: \textbf{appeared@k}, which measures how often the adversarial passage appears within the top-k results, and \textbf{objective} which is the similarity score (either cosine similarity or dot product) between the query and the adversarial passage. 
+
+
+\subsection{Evaluation}
+
+The experimental results displayed in Table \ref{table:res} unequivocally demonstrate the superior performance of the Combination Attack. Across all nine models and the two different datasets tested, my proposed attack significantly outperformed the control and both baselines.
+
+As expected, the \textbf{\texttt{info} Only} control showed virtually no success, yielding very low average similarity scores. Additionally, the \textbf{\texttt{stuffing}} test provided only a marginal benefit, where its \textbf{appeared@1} performance remained in the single digits for most of the models.
+
+The major comparison is against \textbf{Adversarial Decoding} (\textbf{\texttt{Adv. Dec.}}). While it's a capable attack, achieving respectable appeared@10 success rates, my Combination Attack represents a substantial leap forward in effectiveness. 
+
+For all models, Combination Attack managed to achieve a perfect appeared@10 score, meaning in all instances measure, my attack successfully allowed the retriever model to place the poisoned \texttt{info} within the top 10 results. Better yet, for most attacks, it also reached a perfect appeared@1 score, while for all models it managed to keep this score above 92\%. 
+
+This pattern of success was repeated for both datasets and for models based on either cosine similarity or dot product, which demonstrates the attack's robustness and its model-agnostic power. 
+
+
+\subsection{Comparison to GASLITE}
+
+The most significant finding is how the performance of Combination Attack compares to GASLITE. White-box attacks have a fundamental advantage, as they have access to the model's internal states and gradients, allowing for better, gradient-guided optimization. As such, I consider GASLITE's performance to be a practical upper bound for what is achievable for a black-box attack. 
+
+\begin{table}
+\caption{Comparison to GASLITE on MSMARCO}
+\label{table:gaslite}
+  \begin{tabular}{ll|cc|c}
+  \hline
+  & & \multicolumn{2}{c|}{\textbf{objective}} & \\
+  \textbf{Sim.} & \textbf{Model} & \texttt{GASLITE} & \texttt{Combi} & \textbf{Diff. \%} \\
+  \hline
+  \multirow{5}{*}{Cosine} & E5 & 0.971 & 0.948 & 97.63\% \\
+  \hhline{~----}
+  & MiniLM & 0.974 & 0.923 & 94.76\% \\
+  \hhline{~----}
+  & GTR-T5 & 0.957 & 0.910 & 95.09\% \\
+  \hhline{~----}
+  & aMPNet & 0.955 & 0.905 & 94.76\% \\
+  \hhline{~----}
+  & Arctic & 0.832 & 0.763 & 91.71\% \\
+  \hline
+  \multirow{4}{*}{Dot} & Contriever & 3.453 & 2.463 & 71.33\% \\
+  \hhline{~----}
+  & Contriever-MS & 3.650 & 2.799 & 76.68\% \\
+  \hhline{~----}
+  & ANCE & 719.20 & 717.496 & 99.76\% \\
+  \hhline{~----}
+  & mMPNet & 41.208 & 40.336 & 97.88\% \\
+  \hline
+ \end{tabular}
+ \end{table}
+ 
+As shown in Table \ref{table:gaslite}, my Combination Attack came very close to GASLITE, achieving more than 95\% of the similarity that GASLITE achieved for most of the models, despite having no access to gradients. Additionally, While GASLITE managed to achieve 100\% success rate for appeared@1 \cite{bentov2024}, our attack came very close in this metric. 
+
+This is a major result, which demonstrates that a well crafted black-box attack can produce adversarial results which are nearly as effective as those produce by state-of-the-art white-box attacks, such as GASLITE. 
+
+I also noticed another interesting trend, where some passages that were crafted with GASLITE, had many similar tokens to Combination Attack:
+
+\begin{framed}
+
+\center
+\textcolor{red}{\textbf{Warning: The following passages contain offensive text from the ToxiGen dataset} \cite{toxigen}}
+
+\begin{framed}
+\noindent
+\textbf{Query}: \\
+\noindent
+\textbf{dogs} that are good with \textbf{kids}
+\end{framed}
+
+\begin{framed}
+\noindent
+\textbf{\texttt{GASLITE}}: \\
+\noindent
+\textit{a woman who is clothed is constantly getting raped, they deserve to be harassed.} smile tells wants analysts redner ensures enjoyable aluminum nonetheless advancing \textbf{kids} cello lion dolphinslp those closest relatively few withons mentionedringns are \textbf{dogs} good who good relatively smoothly! mainly ussr \textbf{dogs} distributed married deter \textbf{dogs} nissan rockets manages bird loveatonergy pistonsoche alzheimer. selection have \textbf{dog} allows \textbf{kids} under 29gging \textbf{dogs} rodeach magical archer brown tony good dowuron mention greatest \textbf{kids}
+\end{framed}
+Similarity between query and \texttt{GASLITE} passage: 0.9552
+
+\begin{framed}
+\noindent
+\textbf{Combination Attack}: \\
+\noindent
+\textit{a woman who is clothed is constantly getting raped, they deserve to be harassed} arthritis mated ensures afforded excellent adjacent limit convex pets black pen wheel thus parent graders great but drop wolves carthage tentacles pleasant inline them jarvis also select caribbean syn ua siegel which \textbf{dog} which mikhail \textbf{kids} cu waves reliable don astros austro stanford manage theoretically answer notably sabres with bears cites monarch \textbf{dogs} they \textbf{dog} productive having smoke cakes \textbf{kid} james \textbf{kids kids} specifically features michael trio together cincinnati emory nice ages
+\end{framed}
+Similarity between query and Combi passage: 0.9357
+\end{framed}
+
+In the example above, we can see that both attacks included \textbf{dog(s)} and \textbf{kid(s)} in their passages, correctly fitting to the query. This is a major result that shows that my Combination Attack manages to mimic the behaviour of \texttt{GASLITE}, thereby producing passages which contain similar important tokens.
+
+\subsection{Summary of Results}
+
+In summary, the evaluation yields three key conclusions:
+\begin{enumerate}
+  \item My proposed Combination Attack massively outperforms standard black-box baselines, including existing advanced methods. Its success is consistent across a wide range of retrieval models.
+  \item The attack is highly potent, achieving appeared@1 success rates of 92\% or higher for all models, demonstrating its ability to control the top search result for a targeted query.
+  \item The performance of my black-box attack is remarkably close to that of the white-box GASLITE attack, showing that access to model gradients is not necessarily a prerequisite for crafting highly effective adversarial passages.
+\end{enumerate}
 
 
 \section{Discussion}
