@@ -1,0 +1,237 @@
+\documentclass[a4paper, sigconf]{acmart}
+\usepackage{multirow,hhline,graphicx,array}
+\usepackage{fullwidth}
+\newcolumntype{M}[1]{>{\centering\arraybackslash}m{#1}}
+
+\title{Black-Box Transformation of the GASLITE Attack: \\Literature Review}
+\author{Ishay Yemini\\Tel Aviv University\\ \today}
+\date{\today}
+
+\settopmatter{printacmref=false}
+\setcopyright{none}
+\renewcommand\footnotetextcopyrightpermission[1]{}
+\pagestyle{plain}
+
+\begin{document}
+
+\maketitle
+
+\section{Abstract}
+
+TO BE FILLED
+
+\section{Introduction}
+
+Retrieval-augmented generation (RAG) systems are becoming more and more common in various natural language processing applications. This has led to a rise in research dedicated to understanding and mitigating their vulnerabilities to adversarial attacks. These attacks aim to degrade the performance of RAG systems, often by manipulating the retrieval component. However, many existing attack methods operate under the assumption of white-box access, implying that the attacker has complete knowledge of the RAG system's internal mechanisms, including its parameters and gradients. This assumption is often unrealistic in real-world scenarios, where attackers typically lack such privileged access. 
+
+GASLITE is one such attack that, based on its nature of manipulating embeddings through gradient information, requires direct access to the gradients of the dense retrieval model. To address the limitations imposed by white-box requirements, this project seeks potential methods and research directions for transforming the GASLITE attack into a black-box attack. The focus will be on techniques that can bypass the need for direct gradient access, thereby enhancing the practicality and applicability of adversarial attacks against dense retrieval systems in more realistic threat models.
+
+
+\section{Related Work}
+
+\subsection{GASLITE}
+
+GASLITE is a newly proposed attack method to agains embedding-based RAGs \cite{bentov2024}. 
+GASLITE uses a gradient-based search method in order to generate adversarial passages for promoting a chosen malicious passage, without modifying the model or relying on the specific corpus content. 
+By carefully crafting perturbations to add on top of the selected poison, GASLITE can promote it to the top of the retrieval list for specific queries \cite{bentov2024}.
+
+In this paper, the researches focused on three types of attacks: Knows All, where the attacker knows the specific query to be attacked, in which case they consistently managed to make the crafted passages be the top-1 result; Knows What, targeting a concept and not a specific query, where they also achieved impressing results, managing the promote the poison to the top-10 for most queries and most models; and Knows Nothing, for concept agnostic attacks, which they found to be the most challenging but still achieved top-10 visibility for more than 10\% of queries \cite{bentov2024}.
+ 
+Still, the fundamental limitation of GASLITE, which I seek to improve on in my research, is its requirement for direct access to the model's gradients. This limits the attack to White-Box scenarios only, a limit that is often not met in practical settings where RAG systems are deployed as black boxes with none (or limited) access to their gradients and internal workings \cite{bentov2024}. 
+
+
+\subsection{CorruptRAG}
+
+TO BE FILLED
+
+
+\subsection{PoisonedRAG}
+
+TO BE FILLED
+
+
+\subsection{Square Attack}
+
+Andriushchenko et al. \cite{andriushchenko2020} introduce the Square Attack, a query-efficient black-box adversarial attack. The method utilizes a randomized search approach that applies localized, square-shaped perturbations to an image. The attack starts with a pre-defined square size, chooses a random area to attack, and then on each iteration the square's area gets smaller. This strategy allows the attack to be much faster and efficient than random search, as it counts not just a single pixel but an entire area. The authors managed to demonstrate that the Square Attack can even outperform some white-box attacks on standard benchmarks, and is capable of breaking defenses that appear robust to traditional PGD attacks. 
+
+\subsection{Universal Adversarial Triggers}
+
+My main direction to explore is the idea of Universal Adversarial Triggers (UATs) \cite{wallace2021}. This idea relates to the concept of manipulating text embeddings through certain token sequences. Specifically, UATs are a sequence of tokens that, when appended to any input text, can cause a ML model to produce an incorrect or targeted prediction. The work in this area introduces gradient-guided methods for discovering these triggers. While the process for finding UATs often relies on having white-box access to the model, the resulting UATs are input-agnostic and have been shown to sometimes transfer affectively to other models, even with different embeddings and architectures \cite{wallace2021}.
+
+UATs have been shown to demonstrate potential in attacking the safeguards of LLMs \cite{liang2025}. UATs might achieve this effect by approximating semantic information within their adversarial training region \cite{subhash2023}. This implies that the manipulation cause by UATs may not be arbitrary, but could be related to semantically meaningful directions in the embedding space, similar to the embedding manipulation goals of the GASLITE attack \cite{bentov2024}. Therefore, research should explore the possibility of finding UATs that, when appending to queries or documents, can manipulate the retrieval rankings in dense retrieval models without direct access to the gradients. This transferability property of UATs, where a trigger found from a surrogate model and might also work on the target dense retriever, is especially relevant for the black-box goal. 
+
+
+\section{Technical Approach}
+
+
+The approach of my attack evolved significantly through an ever-changing process of experimentation, analysis, and refinement, starting with a simple, random algorithm and moving towards a more sophisticated, two-stage attack strategy. 
+
+My goal was to develop a black-box attack, capable of manipulating the retrieval ranking for a given query, with the same threat model as the "Knows-All" setting from the GASLITE paper \cite{bentov2024}. This setting assumes the attacker knows the target query, and can craft a specific suffix to a random malicious passage \texttt{info}, to turn it into an adversarial passage. 
+
+
+\subsection{Random Search Attack}
+
+The first iteration of the attack was a simple, greedy, token-by-token random search, implemented in the \texttt{random\_attack} method. The logic was simple: 
+
+\begin{enumerate}
+  \item Start with a base "poison".
+  \item At each step, generate a pool of several hundred random candidate tokens from the model's vocabulary. 
+  \item For each candidate token, calculate the cosine similarity when temporarily appending it to the current passage.
+  \item Select the token that yields the highest similarity score, permanently append it to the passage, and proceed to the next step.  
+\end{enumerate}
+
+This simple attack showed some promising success with certain passages from MSMARCO using the E5 model, however when generalized to a 50-query trial in the same setting as GASLITE \cite{bentov2024}, the attack's success became minimal, managing to bring the poison to the top result of the query only once.
+
+\subsection{Query Stuffing}
+
+As a temporary improvement, I made an enhancement to the random attack by first appending the text of the target query directly to the end of the poison passage, before running the attack. My hypothesis was that this would immediately ground the poisoned passage to a more correct semantic region, giving the attack algorithm a stronger starting point. This simple change proved effective, allowing for almost a 62\% success rate on the same top-1, 50-query trial. 
+
+\subsection{Square Attack}
+
+While query stuffing improved results, this had a major drawback, as this relied too heavily on one specific query, and would render this attack impossible to implement for the Knows-What and Knows-Nothing settings \cite{bentov2024}. As such, a better, more powerful algorithm was needed. 
+
+Inspiration was drawn from the "Square Attack" \cite{andriushchenko2020}, however I needed to implement this attack to our 1D setting. To do this, instead of looking at squares of pixel, I focused on segments of tokens, while trying to preserve as much of the original logic as possible. This adapted square attack works as follows:
+
+\begin{enumerate}
+  \item \textbf{Initialization}: The attack begins by appending a sequence of randomly chosen tokens to the base \texttt{info} passage. 
+  \item \textbf{Iterative Refinement}: For a set number of iterations: 
+  \begin{enumerate}
+    \item \textbf{Segment Selection}: The algorithm randomly chooses a contiguous segment of tokens within the suffix, the size of which decreases as the algorithm matures, allowing for vast exploration at the beginning and fine-tuning later on. 
+    \item \textbf{Block Replacement}: Multiple candidate replacements are generated for the chosen block, each of them is evaluated by calculating its similarity to the target query. If the best candidate passage has a higher similarity score than the current, it is accepted. Otherwise, the change is discarded. 
+  \item 
+  \end{enumerate}
+  \item \textbf{Early Stopping}: If no improvement is found for a specified number of iterations, the attack terminates.
+\end{enumerate}
+ 
+ 
+ 
+
+
+
+% SOME HISTORY BEFORE CURRENT ATTACK, MAYBE FAILED METHODS
+
+
+% CURRENT ATTACK SETUP, TOXIGN ETC
+
+% HPARAM SEARCH
+In order to achieve optimal performance for my Combi attack, 
+
+% GO OVER THE CODE IN DETAIL, EXPLAIN WHAT IT DOES
+
+
+
+
+
+\section{Experimental Setup}
+
+I attacked an extensive setup to test popular retrievers, and compared my results to stuffing and GASLITE baselines.
+
+\subsubsection*{Models} I evaluated many embedding-based retreivers, mainly to compare them to existing benchmarks in GASLITE \cite{bentov2024}. The models I attacked are E5, MiniLM, GTR-T5, aMPNet, Acrtic, Contriever, Contriever-MS, ANCE, mMPNet. % TODO: CITE
+
+\subsubsection*{Datasets} I ran the experiment on two datasets, MSMARCO and NQ. MSMARCO contains a corpus of 8.8M passages and 0.5M search queries, and is a standard dataset used to evaluate RAG attacks. NQ is another database I used, mainly to compare to GASLITE \cite{bentov2024} and prove that the attack generalizes to other datasets. For the malicious info, I sampled a random passage from ToxiGen.
+
+
+\section{Results}
+
+gdgdf
+
+dgfgfd
+
+dfgfdg
+
+
+dfgfdgfd
+
+dfgfdgfdh
+sdfksd
+
+
+sdkfosd\
+
+fkdsfsdk
+msdf
+sd
+
+sdfdsf
+
+
+fsdfsd
+
+sdf
+sdfsd
+
+
+
+sdfsdfdsfsd
+
+sdfdsfsdf
+
+
+hthg
+
+
+kughmn
+
+
+g
+j
+unfgn
+
+nfgvb
+
+mghbnmg
+
+mhbmhgm
+
+gmhvbmhvnn
+
+ghvjng
+
+
+
+TO BE FILLED
+
+% EXPERIMENT DESIGN
+  
+  
+  
+\begin{table*}
+\begin{tabular}{lll|cccc|cccc}
+  \hline
+   & & & \multicolumn{4}{c}{appeared@10 (appeared@1)} & \multicolumn{4}{c}{objective} \\
+  \textbf{Dataset} & \textbf{Sim.} & \textbf{Model} & \texttt{info} Only & stuffing & Adv. Dec. & Combi & \texttt{info} Only & stuffing & Adv. Dec. & Combi \\
+  \hline
+ \input results_table
+ \end{tabular}
+\end{table*}
+
+% DISCUSS RESULTS
+
+% COMPARE TO GASLITE ON CERTAIN PASSAGES
+
+
+\section{Discussion}
+
+TO BE FILLED
+
+
+\subsection{Limitations}
+
+TO BE FILLED
+
+
+\subsection{Future Work}
+
+TO BE FILLED
+
+\section{Conclusion}
+
+TO BE FILLED
+
+
+\bibliographystyle{acm} 
+\bibliography{final_paper.bib}
+
+
+\end{document}
+
