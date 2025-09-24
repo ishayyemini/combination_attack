@@ -98,42 +98,70 @@ Inspiration was drawn from the "Square Attack" \cite{andriushchenko2020}, howeve
   \begin{enumerate}
     \item \textbf{Segment Selection}: The algorithm randomly chooses a contiguous segment of tokens within the suffix, the size of which decreases as the algorithm matures, allowing for vast exploration at the beginning and fine-tuning later on. 
     \item \textbf{Block Replacement}: Multiple candidate replacements are generated for the chosen block, each of them is evaluated by calculating its similarity to the target query. If the best candidate passage has a higher similarity score than the current, it is accepted. Otherwise, the change is discarded. 
-  \item 
   \end{enumerate}
   \item \textbf{Early Stopping}: If no improvement is found for a specified number of iterations, the attack terminates.
 \end{enumerate}
  
+This method proved more effective than the simple random search, as it modifies multiple tokens at once, enabling it to escape local optima by making larger "jumps" in the semantic space instead of smaller, one-worded "jumps". 
+
  
- 
+\subsection{Combination Attack}
+
+My breakthrough came from combining both attacks, the random search attack with the square attack. My newly proposed Combination Attack is a two stage process:
+
+\begin{enumerate}
+  \item \textbf{Initialization}: First, the simple random attack is run to generate an initial sequence of tokens. 
+  \item \textbf{Refinement}: Then, the token sequence generated is used as the starting point for a square attack.
+\end{enumerate}
+
+This hybrid approach leverages the strengths of both methods. The random search allows for bolder movements in the semantic space, essentially placing the initial passage in a promising semantic region. Then, the square attack takes over, performing a more comprehensive local search to refine this starting point into a highly optimized final passage. This allows it to "snake" around the specific semantic region, precisely refining it to align with the target embedding.
 
 
+\subsection{Hyperparameter Optimization}
 
-% SOME HISTORY BEFORE CURRENT ATTACK, MAYBE FAILED METHODS
+With the powerful attack algorithm in place, my final step was to tune its hyperparameters. The script \texttt{comb\_hparam\_search.py} was used to perform a random search over the key parameters of Combination Attack:
+
+\begin{itemize}
+  \item \texttt{total\_tokens}: The number of tokens to append.
+  \item \texttt{p\_init}: The initial "window" size.
+  \item \texttt{num\_iters}: The number of optimization iterations.
+  \item \texttt{random\_pool\_per\_pos}: The diversity of random tokens to be sampled at each position.
+\end{itemize}
+
+This search was run twice, each time for dozens of trials, when the second time refined the search over a narrower space. The objective was to maximize the average cosine similarity, over a chosen model, E5 \cite{e5}
+
+Additionally, a similar search was run to find the best hyperparameters for the \texttt{adversarial decoding} attack.
+
+All hyperparameters for both attacks are detailed in Section \ref{expset} below.  
 
 
-% CURRENT ATTACK SETUP, TOXIGN ETC
+\section{Threat Model} 
 
-% HPARAM SEARCH
-In order to achieve optimal performance for my Combi attack, 
+Exactly as with the Knows-All setting in GASLITE \cite{bentov2024}, I attacked a single query with one adversarial passage, meaning I tried to get a suffix-controlled text as similar as possible to a random query. I averaged results on 50 randomly sampled queries, from both MSMARCO and NQ. 
 
-% GO OVER THE CODE IN DETAIL, EXPLAIN WHAT IT DOES
-
+The attack was built as a black-box attack, which meant it had access to the tokenizer and the embedding, but otherwise it had no access to any other part of the model, such as the gradients.
 
 
-
-
-\section{Experimental Setup}
+\section{Experimental Setup} \label{expset}
 
 I attacked an extensive setup to test popular retrievers, and compared my results to stuffing and GASLITE baselines.
 
 \subsubsection*{Models} I evaluated many embedding-based retreivers, mainly to compare them to existing benchmarks in GASLITE \cite{bentov2024}. The models I attacked are E5, MiniLM, GTR-T5, aMPNet, Acrtic, Contriever, Contriever-MS, ANCE, mMPNet. % TODO: CITE
 
-\subsubsection*{Datasets} I ran the experiment on two datasets, MSMARCO and NQ. MSMARCO contains a corpus of 8.8M passages and 0.5M search queries, and is a standard dataset used to evaluate RAG attacks. NQ is another database I used, mainly to compare to GASLITE \cite{bentov2024} and prove that the attack generalizes to other datasets. For the malicious info, I sampled a random passage from ToxiGen.
+\subsubsection*{Datasets} I ran the experiment on two datasets, MSMARCO \cite{msmarco} and NQ \cite{nq}. MSMARCO contains a corpus of 8.8M passages and 0.5M search queries, and is a standard dataset used to evaluate RAG attacks. NQ is another database I used, mainly to compare to GASLITE \cite{bentov2024} and prove that the attack generalizes to other datasets, which contains a corpus of 2.7M passages and 3.5K search queries. For the malicious info, I sampled a random passage from ToxiGen.
+
+\subsubsection*{My Attack} The hyperparameters used in my attack were \texttt{total\_tokens=72}, \texttt{p\_init=0.3946}, \texttt{num\_iters=2940}, and \texttt{random\_pool\_per\_pos=316}.
+
+\subsubsection*{Other Attacks} For a control, I tested \textbf{\texttt{info} Only} where the adversarial passage is just the chosen \texttt{info} alone. Then, for comparison, I used \textbf{\texttt{stuffing}}, where the query was appended to the end of \texttt{info}, and \textbf{\texttt{Adv. Dec.}} \cite{advdec}, the implementation of which I recreated in order to fit within our threat model, and used the following hyperparameters: \texttt{max\_tokens=57}, \texttt{beam\_size=9}, \texttt{pool\_size=208}, \texttt{sample\_per\_beam=104}, and \texttt{temperature=0.9752}.
+
+\subsubsection*{Metrics} As with GASLITE \cite{bentov2024}, I measured the attack's success in terms of visibility, by using two metrics: \textbf{appeared@k}, which measures how often the adversarial passage appears within the top-k results, and \textbf{objective} which is the similarity score (either cosine similarity or dot product) between the query and the adversarial passage. 
 
 
 \section{Results}
 
-gdgdf
+
+
+
 
 dgfgfd
 
