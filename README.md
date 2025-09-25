@@ -1,6 +1,6 @@
 # Combination Attack
 
-![Combination Attack Diagram](tex/combi_attack.pdf)
+![Combination Attack Diagram](tex/combi_attack.svg)
 
 Code implementation for the project [Black-Box Transformation of the GASLITE Attack](tex/final_paper.pdf). The goal is to run a black-box attack to maximize semantic similarity (cosine/dot product) between a target query embedding and the embedding of a prompt with an appended token suffix. 
 
