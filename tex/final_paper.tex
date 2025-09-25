@@ -19,7 +19,7 @@
 
 \section*{Abstract}
 
-Retrieval-Augmented Generation (RAG) systems are increasingly vulnerable to adversarial attacks that manipulate their retrieval components. However, many state-of-the-art attacks require white-box access to model gradients, an assumption that is often unrealistic in practice. This project introduces the Combination Attack, a highly effective black-box attack on dense retrieval models. My method employs a multi-stage optimization strategy: it first uses a random search to generate a promising initial adversarial passage, which is then refined using a robust, block-based optimization algorithm inspired by the Square Attack. I evaluate my attack on the MSMARCO \cite{bajaj2018} dataset against a diverse suite of nine modern sentence-transformer models. The results demonstrate that the Combination Attack significantly outperforms existing black-box baselines. Most notably, it achieves top-1 retrieval success rates of over 90\% for most models, demonstrating performance remarkably close to that of the state-of-the-art white-box attack, GASLITE. This work shows that the performance gap between black-box and white-box attacks is smaller than previously assumed, highlighting a practical and potent security vulnerability in modern RAG systems that rely on model obscurity for defense.
+Retrieval-Augmented Generation (RAG) systems are increasingly vulnerable to adversarial attacks that manipulate their retrieval components. However, many state-of-the-art attacks require white-box access to model gradients, an assumption that is often unrealistic in practice. This project introduces the Combination Attack, a highly effective black-box attack on dense retrieval models. My method employs a multi-stage optimization strategy: it first uses a random search to generate a promising initial adversarial passage, which is then refined using a robust, block-based optimization algorithm inspired by the Square Attack. I evaluate my attack on the MSMARCO \cite{bajaj2018} dataset against a diverse suite of nine modern sentence-transformer models. The results demonstrate that the Combination Attack significantly outperforms existing black-box baselines. Most notably, it achieves top-1 retrieval success rates of over 90\% for most models, demonstrating performance remarkably close to that of the state-of-the-art white-box attack, GASLITE. This work shows that the performance gap between black-box and white-box attacks is smaller than previously assumed, highlighting a practical and potent security vulnerability in modern RAG systems that rely on model obscurity for defense. \footnote{My attack code is available at \url{https://github.com/ishayyemini/combination_attack}}
 
 
 \section{Introduction}
@@ -46,7 +46,7 @@ Still, the fundamental limitation of GASLITE, which I seek to improve on in my r
 
 Zhang et al. propose CorruptRAG, a poisoning attack designed for practicality and stealth \cite{zhang2025-prac}. The key innovation of CorruptRAG is its ability to succeed by injecting only a single poisoned document into the knowledge base, whereas other methods often required multiple injections to ensure retrieval. 
 
-The attack's primary goal is to corrupt the final generated answer of the RAG system, which it achieves through two distinct strategies: "Answer Suppression," which aims to prevent the LLM from finding the correct answer in the retrieved context, and "Answer Knowledge Corruption," which subtly misleads the LLM into trusting the incorrect information provided in the poisoned document \cite{zhang2025-prac}.
+The attack's primary goal is to corrupt the final generated answer of the RAG system, which it achieves through two distinct strategies: "Answer Suppression", which aims to prevent the LLM from finding the correct answer in the retrieved context, and "Answer Knowledge Corruption", which subtly misleads the LLM into trusting the incorrect information provided in the poisoned document \cite{zhang2025-prac}.
 
 While my Combination Attack also operates with a single document, its objective and evaluation are focused on maximizing retrieval rank. In contrast, CorruptRAG's techniques are centered on linguistic manipulation to influence the LLM's reasoning, with its success being measured by the incorrectness of the final generated output. Additionally, this attack could not be easily adapted into boarder settings such as "Knows-What" \cite{bentov2024}, where more queries need to be optimized simultaneously. 
 
@@ -170,11 +170,6 @@ I attacked an extensive setup to test popular retrievers, and compared my result
 
 \subsubsection*{Models} I evaluated many embedding-based retreivers, mainly to compare them to existing benchmarks in GASLITE \cite{bentov2024}. The models I attacked are E5 \cite{wang2024}, MiniLM \cite{wang2020}, GTR-T5 \cite{ni2021}, aMPNet \cite{song2020}, Arctic \cite{merrick2024}, Contriever \cite{izacard2022}, Contriever-MS \cite{izacard2022}, ANCE \cite{xiong2020}, mMPNet \cite{song2020}.
 
-\subsubsection*{Datasets} I ran the experiment on two datasets, MSMARCO \cite{bajaj2018} and NQ \cite{kwiatkowski2019}. MSMARCO contains a corpus of 8.8M passages and 0.5M search queries, and is a standard dataset used to evaluate RAG attacks. NQ is another database I used, mainly to compare to GASLITE \cite{bentov2024} and prove that the attack generalizes to other datasets, which contains a corpus of 2.7M passages and 3.5K search queries. For the malicious info, I sampled a random passage from ToxiGen \cite{hartvigsen2022}.
-
-\subsubsection*{My Attack} The hyperparameters used in my attack were calibrated to achieve the highest success, and were  \texttt{total\_tokens=72}, \texttt{p\_init=0.3946}, \texttt{num\_iters=2940}, and \texttt{random\_pool\_per\_pos=316}.
-
-
 \begin{table*}[h!]
 \caption{Experiment Results}
 \label{table:res}
@@ -187,6 +182,9 @@ I attacked an extensive setup to test popular retrievers, and compared my result
  \end{tabular}
 \end{table*}
 
+\subsubsection*{Datasets} I ran the experiment on two datasets, MSMARCO \cite{bajaj2018} and NQ \cite{kwiatkowski2019}. MSMARCO contains a corpus of 8.8M passages and 0.5M search queries, and is a standard dataset used to evaluate RAG attacks. NQ is another database I used, mainly to compare to GASLITE \cite{bentov2024} and prove that the attack generalizes to other datasets, which contains a corpus of 2.7M passages and 3.5K search queries. For the malicious info, I sampled a random passage from ToxiGen \cite{hartvigsen2022}.
+
+\subsubsection*{My Attack} The hyperparameters used in my attack were calibrated to achieve the highest success, and were  \texttt{total\_tokens=72}, \texttt{p\_init=0.3946}, \texttt{num\_iters=2940}, and \texttt{random\_pool\_per\_pos=316}.
 
 \subsubsection*{Other Attacks} For a control, I tested \textbf{\texttt{info} Only} where the adversarial passage is just the chosen \texttt{info} alone. Then, for comparison, I used \textbf{\texttt{stuffing}}, where the query was appended to the end of \texttt{info}, and \textbf{\texttt{Adv. Dec.}} \cite{zhang2025-adv}, the implementation of which I recreated in order to fit within our threat model, and used the following hyperparameters: \texttt{max\_tokens=57}, \texttt{beam\_size=9}, \texttt{pool\_size=208}, \\\texttt{sample\_per\_beam=104}, and \texttt{temperature=0.9752}.
 
