@@ -19,7 +19,7 @@
 
 \section*{Abstract}
 
-Retrieval-Augmented Generation (RAG) systems are increasingly vulnerable to adversarial attacks that manipulate their retrieval components. However, many state-of-the-art attacks require white-box access to model gradients, an assumption that is often unrealistic in practice. This project introduces the Combination Attack, a novel and highly effective black-box attack on dense retrieval models. My method employs a two-stage optimization strategy: it first uses a random search to generate a promising initial adversarial passage, which is then refined using a robust, block-based optimization algorithm inspired by the Square Attack. I evaluate my attack on the MSMARCO dataset against a diverse suite of nine modern sentence-transformer models. The results demonstrate that the Combination Attack significantly outperforms existing black-box baselines. Most notably, it achieves top-1 retrieval success rates of over 90\% for most models, demonstrating performance remarkably close to that of the state-of-the-art white-box attack, GASLITE. This work shows that the performance gap between black-box and white-box attacks is smaller than previously assumed, highlighting a practical and potent security vulnerability in modern RAG systems that rely on model obscurity for defense.
+Retrieval-Augmented Generation (RAG) systems are increasingly vulnerable to adversarial attacks that manipulate their retrieval components. However, many state-of-the-art attacks require white-box access to model gradients, an assumption that is often unrealistic in practice. This project introduces the Combination Attack, a highly effective black-box attack on dense retrieval models. My method employs a multi-stage optimization strategy: it first uses a random search to generate a promising initial adversarial passage, which is then refined using a robust, block-based optimization algorithm inspired by the Square Attack. I evaluate my attack on the MSMARCO \cite{bajaj2018} dataset against a diverse suite of nine modern sentence-transformer models. The results demonstrate that the Combination Attack significantly outperforms existing black-box baselines. Most notably, it achieves top-1 retrieval success rates of over 90\% for most models, demonstrating performance remarkably close to that of the state-of-the-art white-box attack, GASLITE. This work shows that the performance gap between black-box and white-box attacks is smaller than previously assumed, highlighting a practical and potent security vulnerability in modern RAG systems that rely on model obscurity for defense.
 
 
 \section{Introduction}
@@ -44,9 +44,9 @@ Still, the fundamental limitation of GASLITE, which I seek to improve on in my r
 
 \subsection{CorruptRAG}
 
-Zhang et al. propose CorruptRAG, a poisoning attack designed for practicality and stealth \cite{zhang2025}. The key innovation of CorruptRAG is its ability to succeed by injecting only a single poisoned document into the knowledge base, whereas other methods often required multiple injections to ensure retrieval. 
+Zhang et al. propose CorruptRAG, a poisoning attack designed for practicality and stealth \cite{zhang2025-prac}. The key innovation of CorruptRAG is its ability to succeed by injecting only a single poisoned document into the knowledge base, whereas other methods often required multiple injections to ensure retrieval. 
 
-The attack's primary goal is to corrupt the final generated answer of the RAG system, which it achieves through two distinct strategies: "Answer Suppression," which aims to prevent the LLM from finding the correct answer in the retrieved context, and "Answer Knowledge Corruption," which subtly misleads the LLM into trusting the incorrect information provided in the poisoned document \cite{zhang2025}.
+The attack's primary goal is to corrupt the final generated answer of the RAG system, which it achieves through two distinct strategies: "Answer Suppression," which aims to prevent the LLM from finding the correct answer in the retrieved context, and "Answer Knowledge Corruption," which subtly misleads the LLM into trusting the incorrect information provided in the poisoned document \cite{zhang2025-prac}.
 
 While my Combination Attack also operates with a single document, its objective and evaluation are focused on maximizing retrieval rank. In contrast, CorruptRAG's techniques are centered on linguistic manipulation to influence the LLM's reasoning, with its success being measured by the incorrectness of the final generated output. Additionally, this attack could not be easily adapted into boarder settings such as "Knows-What" \cite{bentov2024}, where more queries need to be optimized simultaneously. 
 
@@ -73,7 +73,7 @@ UATs have been shown to demonstrate potential in attacking the safeguards of LLM
 \section{Technical Approach}
 
 
-The approach of my attack evolved significantly through an ever-changing process of experimentation, analysis, and refinement, starting with a simple, random algorithm and moving towards a more sophisticated, two-stage attack strategy. 
+The approach of my attack evolved significantly through an ever-changing process of experimentation, analysis, and refinement, starting with a simple, random algorithm and moving towards a more sophisticated, multi-stage attack strategy. 
 
 My goal was to develop a black-box attack, capable of manipulating the retrieval ranking for a given query, with the same threat model as the "Knows-All" setting from the GASLITE paper \cite{bentov2024}. This setting assumes the attacker knows the target query, and can craft a specific suffix to a random malicious passage \texttt{info}, to turn it into an adversarial passage. 
 
@@ -89,7 +89,7 @@ The first iteration of the attack was a simple, greedy, token-by-token random se
   \item Select the token that yields the highest similarity score, permanently append it to the passage, and proceed to the next step.  
 \end{enumerate}
 
-This simple attack showed some promising success with certain passages from MSMARCO using the E5 model, however when generalized to a 50-query trial in the same setting as GASLITE \cite{bentov2024}, the attack's success became minimal, managing to bring the poison to the top result of the query only once.
+This simple attack showed some promising success with certain passages from MSMARCO \cite{bajaj2018} using the E5 model \cite{wang2024}, however when generalized to a 50-query trial in the same setting as GASLITE \cite{bentov2024}, the attack's success became minimal, managing to bring the poison to the top result of the query only once.
 
 
 \subsection{Query Stuffing}
@@ -148,7 +148,7 @@ With the powerful attack algorithm in place, my final step was to tune its hyper
   \item \texttt{random\_pool\_per\_pos}: The diversity of random tokens to be sampled at each position.
 \end{itemize}
 
-This search was run twice, each time for dozens of trials, when the second time refined the search over a narrower space. The objective was to maximize the average cosine similarity, over a chosen model, E5 \cite{e5}
+This search was run twice, each time for dozens of trials, when the second time refined the search over a narrower space. The objective was to maximize the average cosine similarity, over a chosen model, E5 \cite{wang2024}.
 
 Additionally, a similar search was run to find the best hyperparameters for the \texttt{adversarial decoding} attack.
 
@@ -157,7 +157,7 @@ All hyperparameters for both attacks are detailed in Section \ref{sec:expset} be
 
 \section{Threat Model} 
 
-Exactly as with the Knows-All setting in GASLITE \cite{bentov2024}, I attacked a single query with one adversarial passage, meaning I tried to get a suffix-controlled text as similar as possible to a random query. I averaged results on 50 randomly sampled queries, from both MSMARCO and NQ. 
+Exactly as with the Knows-All setting in GASLITE \cite{bentov2024}, I attacked a single query with one adversarial passage, meaning I tried to get a suffix-controlled text as similar as possible to a random query. I averaged results on 50 randomly sampled queries, from both MSMARCO \cite{bajaj2018} and NQ \cite{kwiatkowski2019}. 
 
 The attack was built as a black-box attack, which meant it had access to the tokenizer and the embedding, but otherwise it had no access to any other part of the model, such as the gradients.
 
@@ -168,9 +168,9 @@ The attack was built as a black-box attack, which meant it had access to the tok
 
 I attacked an extensive setup to test popular retrievers, and compared my results to stuffing and GASLITE baselines.
 
-\subsubsection*{Models} I evaluated many embedding-based retreivers, mainly to compare them to existing benchmarks in GASLITE \cite{bentov2024}. The models I attacked are E5, MiniLM, GTR-T5, aMPNet, Acrtic, Contriever, Contriever-MS, ANCE, mMPNet. % TODO: CITE
+\subsubsection*{Models} I evaluated many embedding-based retreivers, mainly to compare them to existing benchmarks in GASLITE \cite{bentov2024}. The models I attacked are E5 \cite{wang2024}, MiniLM \cite{wang2020}, GTR-T5 \cite{ni2021}, aMPNet \cite{song2020}, Arctic \cite{merrick2024}, Contriever \cite{izacard2022}, Contriever-MS \cite{izacard2022}, ANCE \cite{xiong2020}, mMPNet \cite{song2020}.
 
-\subsubsection*{Datasets} I ran the experiment on two datasets, MSMARCO \cite{msmarco} and NQ \cite{nq}. MSMARCO contains a corpus of 8.8M passages and 0.5M search queries, and is a standard dataset used to evaluate RAG attacks. NQ is another database I used, mainly to compare to GASLITE \cite{bentov2024} and prove that the attack generalizes to other datasets, which contains a corpus of 2.7M passages and 3.5K search queries. For the malicious info, I sampled a random passage from ToxiGen.
+\subsubsection*{Datasets} I ran the experiment on two datasets, MSMARCO \cite{bajaj2018} and NQ \cite{kwiatkowski2019}. MSMARCO contains a corpus of 8.8M passages and 0.5M search queries, and is a standard dataset used to evaluate RAG attacks. NQ is another database I used, mainly to compare to GASLITE \cite{bentov2024} and prove that the attack generalizes to other datasets, which contains a corpus of 2.7M passages and 3.5K search queries. For the malicious info, I sampled a random passage from ToxiGen \cite{hartvigsen2022}.
 
 \subsubsection*{My Attack} The hyperparameters used in my attack were calibrated to achieve the highest success, and were  \texttt{total\_tokens=72}, \texttt{p\_init=0.3946}, \texttt{num\_iters=2940}, and \texttt{random\_pool\_per\_pos=316}.
 
@@ -188,7 +188,7 @@ I attacked an extensive setup to test popular retrievers, and compared my result
 \end{table*}
 
 
-\subsubsection*{Other Attacks} For a control, I tested \textbf{\texttt{info} Only} where the adversarial passage is just the chosen \texttt{info} alone. Then, for comparison, I used \textbf{\texttt{stuffing}}, where the query was appended to the end of \texttt{info}, and \textbf{\texttt{Adv. Dec.}} \cite{advdec}, the implementation of which I recreated in order to fit within our threat model, and used the following hyperparameters: \texttt{max\_tokens=57}, \texttt{beam\_size=9}, \texttt{pool\_size=208}, \\\texttt{sample\_per\_beam=104}, and \texttt{temperature=0.9752}.
+\subsubsection*{Other Attacks} For a control, I tested \textbf{\texttt{info} Only} where the adversarial passage is just the chosen \texttt{info} alone. Then, for comparison, I used \textbf{\texttt{stuffing}}, where the query was appended to the end of \texttt{info}, and \textbf{\texttt{Adv. Dec.}} \cite{zhang2025-adv}, the implementation of which I recreated in order to fit within our threat model, and used the following hyperparameters: \texttt{max\_tokens=57}, \texttt{beam\_size=9}, \texttt{pool\_size=208}, \\\texttt{sample\_per\_beam=104}, and \texttt{temperature=0.9752}.
 
 \subsubsection*{Metrics} As with GASLITE \cite{bentov2024}, I measured the attack's success in terms of visibility, by using two metrics: \textbf{appeared@k}, which measures how often the adversarial passage appears within the top-k results, and \textbf{objective} which is the similarity score (either cosine similarity or dot product) between the query and the adversarial passage. 
 
@@ -199,7 +199,7 @@ The experimental results displayed in Table \ref{table:res} unequivocally demons
 
 As expected, the \textbf{\texttt{info} Only} control showed virtually no success, yielding very low average similarity scores. Additionally, the \textbf{\texttt{stuffing}} test provided only a marginal benefit, where its \textbf{appeared@1} performance remained in the single digits for most of the models.
 
-The major comparison is against \textbf{Adversarial Decoding} (\textbf{\texttt{Adv. Dec.}}). While it's a capable attack, achieving respectable appeared@10 success rates, my Combination Attack represents a substantial leap forward in effectiveness. 
+The major comparison is against \textbf{Adversarial Decoding} (\textbf{\texttt{Adv. Dec.}}) \cite{zhang2025-adv}. While it's a capable attack, achieving respectable appeared@10 success rates, my Combination Attack represents a substantial leap forward in effectiveness. 
 
 For all models, Combination Attack managed to achieve a perfect appeared@10 score, meaning in all instances measure, my attack successfully allowed the retriever model to place the poisoned \texttt{info} within the top 10 results. Better yet, for most attacks, it also reached a perfect appeared@1 score, while for all models it managed to keep this score above 92\%. 
 
@@ -211,7 +211,7 @@ This pattern of success was repeated for both datasets and for models based on e
 The most significant finding is how the performance of Combination Attack compares to GASLITE. White-box attacks have a fundamental advantage, as they have access to the model's internal states and gradients, allowing for better, gradient-guided optimization. As such, I consider GASLITE's performance to be a practical upper bound for what is achievable for a black-box attack. 
 
 \begin{table}[h!]
-\caption{Comparison to GASLITE on MSMARCO}
+\caption{Comparison to GASLITE on MSMARCO \cite{bentov2024},\cite{bajaj2018}}
 \label{table:gaslite}
   \begin{tabular}{ll|cc|c}
   \hline
@@ -247,7 +247,7 @@ I also noticed another interesting trend, where some passages that were crafted 
 
 \begin{framed}
 \begin{center}
-\textcolor{red}{\textbf{Warning: The following passages contain offensive text from the ToxiGen dataset} \cite{toxigen}}
+\textcolor{red}{\textbf{Warning: The following passages contain offensive text from the ToxiGen dataset} \cite{hartvigsen2022}}
 \end{center}
 
 \begin{framed}
@@ -306,7 +306,7 @@ While the results are compelling, it is important to look at the limitations of 
   \item \textbf{Knows-All Threat Model}: My experiments operated only under the "Knows-All" thread model, in which the attacker knows the exact query to be targeted. In many real-world cases, an attacker may only know the general topic of interest ("Knows-What") or nothing at all ("Knows-Nothing"). Those more restrictive threat models have not been evaluated.
   \item \textbf{Query Efficiency}: Black-box attacks are inherently query-intensive. As the Combination Attack requires a large number of calls to the embedding endpoint of the target model, within thousands of iterative steps, this means that systems protected by rate limits may render this attack both computationally expensive and time consuming. 
   \item \textbf{Attack Transferability}: This project focused on optimizing for one query and one model at a time. A lack of transferability, which would need to be studied further, would mean that attackers need to attack each target model individually. 
-  \item \textbf{Direct Comparison to Other Attacks}: While Combination Attack was compared to Adversarial Decoding \cite{advdec}, this was done using my implementation of the attack. 
+  \item \textbf{Direct Comparison to Other Attacks}: While Combination Attack was compared to Adversarial Decoding \cite{zhang2025-adv}, this was done using my implementation of the attack. 
 \end{itemize}
 
 
@@ -316,14 +316,14 @@ The findings of this project pave the way for several promising research directi
 
 \begin{itemize}
   \item \textbf{Adapting to More Threat Models}: The most immediate step is to extend this attack to broader threat models, especially the "Knows-What" threat model. This attack was crafted especially without using stuffing, which means it could potentially be easily adapted to optimize a single passage against a cluster of related queries. 
-  \item \textbf{Developing Defenses}: With such a potent black-box attack, it is critical to also research viable defenses. This may involve techniques such as adversarial training \cite{???}, where a model is fine-tuned on examples generated by the attack to learn a more robust embedding space. Another possible avenue could be detection mechanisms \cite{???}, such as classifiers which are trained to identify and flag adversarial passages which contain algorithmically generated text and lie in unusual regions of the embedding space.  
-  \item \textbf{Comprehensive Benchmarking}: A broader and more comprehensive comparative analysis is needed to evaluate the Combination Attack within the landscape of other black-box attacks. Directly benchmarking its performance against attacks such as PoisonedRAG \cite{???} and CorruptRAG \cite{???} would provide a better understanding of its relative strengths and weaknesses.
+  \item \textbf{Developing Defenses}: With such a potent black-box attack, it is critical to also research viable defenses. This may involve techniques such as adversarial training \cite{zhao2024}, where a model is fine-tuned on examples generated by the attack to learn a more robust embedding space. Another possible avenue could be detection mechanisms \cite{kazoom2025}, such as classifiers which are trained to identify and flag adversarial passages which contain algorithmically generated text and lie in unusual regions of the embedding space.  
+  \item \textbf{Comprehensive Benchmarking}: A broader and more comprehensive comparative analysis is needed to evaluate the Combination Attack within the landscape of other black-box attacks. Directly benchmarking its performance against attacks such as PoisonedRAG \cite{zou2025} and CorruptRAG \cite{zhang2025-prac} would provide a better understanding of its relative strengths and weaknesses.
 \end{itemize}
 
 
 \section{Conclusion}
 
-My mission for this project was to explore the feasibility of developing a potent black-box attack against modern dense retrieval systems. Through an iterative process involving experimentation and refinement, I developed the Combination Attack, a novel two-stage attack that manages to significantly outperform existing black-box attacks.
+My mission for this project was to explore the feasibility of developing a potent black-box attack against modern dense retrieval systems. Through an iterative process involving experimentation and refinement, I developed the Combination Attack, a multi-stage attack that manages to significantly outperform existing black-box attacks.
 
 The central takeaway of this work is that black-box attacks can achieve a level of success and effectiveness that rivals even powerful white-box attacks. My attack consistently achieved appeared@1 success rates exceeding 90\% across a diverse suite of models, demonstrating its practical danger and robustness. 
 
