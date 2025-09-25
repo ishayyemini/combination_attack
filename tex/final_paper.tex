@@ -33,11 +33,11 @@ GASLITE is one such attack that, based on its nature of manipulating embeddings 
 
 \subsection{GASLITE}
 
-GASLITE is a newly proposed attack method to agains embedding-based RAGs \cite{bentov2024}. 
+GASLITE is a newly proposed attack method against embedding-based RAGs \cite{bentov2024}. 
 GASLITE uses a gradient-based search method in order to generate adversarial passages for promoting a chosen malicious passage, without modifying the model or relying on the specific corpus content. 
 By carefully crafting perturbations to add on top of the selected poison, GASLITE can promote it to the top of the retrieval list for specific queries \cite{bentov2024}.
 
-In this paper, the researches focused on three types of attacks: Knows All, where the attacker knows the specific query to be attacked, in which case they consistently managed to make the crafted passages be the top-1 result; Knows What, targeting a concept and not a specific query, where they also achieved impressing results, managing the promote the poison to the top-10 for most queries and most models; and Knows Nothing, for concept agnostic attacks, which they found to be the most challenging but still achieved top-10 visibility for more than 10\% of queries \cite{bentov2024}.
+In this paper, the researches focused on three types of attacks: Knows All, where the attacker knows the specific query to be attacked, in which case they consistently managed to make the crafted passages be the top-1 result; Knows What, targeting a concept and not a specific query, where they also achieved impressive results, managing the promote the poison to the top-10 for most queries and most models; and Knows Nothing, for concept agnostic attacks, which they found to be the most challenging but still achieved top-10 visibility for more than 10\% of queries \cite{bentov2024}.
  
 Still, the fundamental limitation of GASLITE, which I seek to improve on in my research, is its requirement for direct access to the model's gradients. This limits the attack to White-Box scenarios only, a limit that is often not met in practical settings where RAG systems are deployed as black boxes with none (or limited) access to their gradients and internal workings \cite{bentov2024}. 
 

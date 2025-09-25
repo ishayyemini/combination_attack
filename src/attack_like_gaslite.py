@@ -1,7 +1,7 @@
 import sys
 import torch
 from sentence_transformers import SentenceTransformer, util
-import data_utils
+from utils import data_utils
 from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import disable_progress_bars
 import json
